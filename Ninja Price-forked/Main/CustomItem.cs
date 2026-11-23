@@ -1,0 +1,555 @@
+using ExileCore.PoEMemory;
+using ExileCore.PoEMemory.Components;
+using ExileCore.PoEMemory.Elements.InventoryElements;
+using ExileCore.PoEMemory.FilesInMemory;
+using ExileCore.PoEMemory.MemoryObjects;
+using ExileCore.Shared.Enums;
+using Ninja_Price_Forked.Enums;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using ExileCore.PoEMemory.Models;
+
+namespace Ninja_Price_Forked.Main;
+
+public record ClusterJewelData(string Name, int PassiveCount);
+
+public class CustomItem
+{
+    //because inlining is weird
+    private static readonly GameStat ClusterJewelPassiveCountStat = Enum.Parse<GameStat>(nameof(GameStat.LocalJewelExpansionPassiveNodeCount));
+    private static readonly GameStat ForbiddenFlameNotableStat = Enum.Parse<GameStat>(nameof(GameStat.UniqueJewelGrantsNotableHashPart1));
+    private static readonly GameStat ForbiddenFleshNotableStat = Enum.Parse<GameStat>(nameof(GameStat.UniqueJewelGrantsNotableHashPart2));
+
+    public static Main Core;
+    public string BaseName;
+    public string UniqueName;
+    public readonly string ClassName;
+    public int ScourgeTier;
+    public bool IsIdentified;
+    public Influence InfluenceFlags;
+    public bool IsCorrupted;
+    public int CorruptionImplicitCount;
+    public bool IsElder;
+    public bool IsShaper;
+    public bool IsCrusader;
+    public bool IsRedeemer;
+    public bool IsHunter;
+    public bool IsWarlord;
+    public bool IsInfluenced;
+    public bool IsMirrored;
+    public readonly bool IsRgb;
+    public readonly bool IsWeapon;
+    public readonly bool IsHovered;
+    public Element Element;
+    public readonly Entity Entity;
+    public int ItemLevel;
+    public readonly int LargestLink = 0;
+    public readonly string Path;
+    public readonly int Quality;
+    public readonly int GemLevel;
+    public string GemName;
+    public readonly ItemRarity Rarity;
+    public readonly int Sockets;
+    // init here so a throw in the entity ctor (swallowed by its catch) can't leave these null - ground render then threw between ImGui Begin/End
+    public readonly List<string> UniqueNameCandidates = [];
+    public ItemTypes ItemType;
+    public ClusterJewelData ClusterJewelData;
+    public readonly List<string> EnchantedStats;
+    public readonly string CapturedMonsterName;
+    public HashSet<string> FoulbornMods = [];
+    public readonly string GrantedPassiveName;
+    public readonly int WombgiftLevel;
+    public readonly List<(string Translation, List<int> Values)> ImplicitModsData = [];
+
+    public readonly uint EntityId;
+    public MapData MapInfo { get; set; } =  new MapData();
+    public CurrencyData CurrencyInfo { get; set; } =  new CurrencyData();
+    public Main.RelevantPriceData PriceData { get; set; } = new Main.RelevantPriceData();
+
+    public static void InitCustomItem(Main core)
+    {
+        Core = core;
+    }
+
+    public class MapData
+    {
+        public bool IsMap;
+        public MapTypes MapType;
+        public int MapTier;
+        public MapOccupier Occupier { get; set; } = MapOccupier.None;
+    }
+
+    public class CurrencyData
+    {
+        public bool IsShard;
+        public int StackSize = 1;
+        public int MaxStackSize = 0;
+    }
+
+    public CustomItem()
+    {
+    }
+
+    public CustomItem(NormalInventoryItem item) : this(item.Item, item)
+    {
+    }
+
+    public CustomItem(BaseItemType baseItemType)
+    {
+        Path = baseItemType.Metadata;
+        ClassName = baseItemType.ClassName ?? string.Empty;
+        BaseName = baseItemType.BaseName ?? string.Empty;
+        ComputeType(null);
+    }
+
+    public CustomItem(string uniqueName, ItemTypes type)
+    {
+        UniqueName = uniqueName;
+        ItemType = type;
+        ClassName = "";
+        BaseName = "";
+        UniqueNameCandidates = [];
+        FoulbornMods = [];
+    }
+
+    public CustomItem(Entity itemEntity, Element element)
+    {
+        try
+        {
+            EntityId = itemEntity.Id;
+            if (element != null && element.Address != 0)
+                Element = element;
+
+            Path = itemEntity.Path;
+            Entity = itemEntity;
+            var baseItemType = Core.GameController.Files.BaseItemTypes.Translate(itemEntity.Path);
+            ClassName = baseItemType?.ClassName ?? string.Empty;
+            BaseName = baseItemType?.BaseName ?? string.Empty;
+            var weaponClass = new List<string>
+            {
+                "One Hand Mace",
+                "Two Hand Mace",
+                "One Hand Axe",
+                "Two Hand Axe",
+                "One Hand Sword",
+                "Two Hand Sword",
+                "Thrusting One Hand Sword",
+                "Bow",
+                "Claw",
+                "Dagger",
+                "Sceptre",
+                "Staff",
+                "Wand"
+            };
+            if (itemEntity.TryGetComponent<Quality>(out var quality))
+            {
+                Quality = quality.ItemQuality;
+            }
+
+            if (itemEntity.TryGetComponent<BrequelFruit>(out var wombgift))
+            {
+                WombgiftLevel = wombgift.Level;
+            }
+
+            if (itemEntity.TryGetComponent<SkillGem>(out var skillGem))
+            {
+                GemLevel = skillGem.Level;
+                GemName = skillGem.GemEffect?.Name;
+            }
+
+            if (itemEntity.TryGetComponent<Base>(out var @base))
+            {
+                InfluenceFlags = @base.InfluenceFlag;
+                ScourgeTier = @base.ScourgedTier;
+                IsElder = @base.isElder;
+                IsShaper = @base.isShaper;
+                IsHunter = @base.isHunter;
+                IsWarlord = @base.isWarlord;
+                IsCrusader = @base.isCrusader;
+                IsRedeemer = @base.isRedeemer;
+                IsCorrupted = @base.isCorrupted;
+                IsInfluenced = IsCrusader || IsRedeemer || IsWarlord || IsHunter || IsShaper || IsElder;
+                IsCorrupted = @base.isCorrupted;
+                ItemLevel = @base.CurrencyItemLevel;
+            }
+
+            if (itemEntity.TryGetComponent<NecropolisCorpse>(out var corpse))
+            {
+                ItemLevel = corpse.Level;
+            }
+
+            if (itemEntity.TryGetComponent<Mods>(out var mods))
+            {
+                Rarity = mods.ItemRarity;
+                IsIdentified = mods.Identified;
+                ItemLevel = mods.ItemLevel;
+                EnchantedStats = mods.EnchantedStats;
+                UniqueName = mods.UniqueName?.Replace('\x2019', '\x27');
+                IsMirrored = mods.IsMirrored;
+                CorruptionImplicitCount = IsCorrupted ? mods.ImplicitMods.Count : 0;
+                if (!IsIdentified && Rarity == ItemRarity.Unique)
+                {
+                    var artPath = itemEntity.GetComponent<RenderItem>()?.ResourcePath;
+                    if (artPath != null)
+                    {
+                        UniqueNameCandidates = (Core.UniqueArtMapping.GetValueOrDefault(artPath) ?? Enumerable.Empty<string>())
+                            .Where(x => !x.StartsWith("Replica ") || x.StartsWith("Replica Dragonfang's Flight"))
+                            .ToList();
+                    }
+                }
+
+                FoulbornMods = mods.ExplicitMods.Where(x => x.RawName.StartsWith("MutatedUnique", StringComparison.Ordinal)).Select(x => x.Translation).ToHashSet();
+
+                ImplicitModsData.AddRange(mods.ImplicitMods.Select(x => (x.Translation, x.Values)));
+
+                if (UniqueName == "Forbidden Flesh" ||
+                    UniqueName == "Forbidden Flame")
+                {
+                    GrantedPassiveName = GetForbiddenJewelGrantedPassiveName(mods.ExplicitMods);
+                }
+
+                var itemStats = GetGameStats(mods.ImplicitMods);
+
+                #region MapOccupation
+
+                var elder = itemStats.GetValueOrDefault(GameStat.MapElderBossVariation);
+                var conqueror = itemStats.GetValueOrDefault(GameStat.MapContainsCitadel);
+
+                MapInfo.Occupier = elder switch
+                {
+                    1 => MapOccupier.Enslaver,
+                    2 => MapOccupier.Eradicator,
+                    3 => MapOccupier.Constrictor,
+                    4 => MapOccupier.Purifier,
+                    _ => conqueror switch
+                    {
+                        1 => MapOccupier.Baran,
+                        2 => MapOccupier.Veritania,
+                        3 => MapOccupier.AlHezmin,
+                        4 => MapOccupier.Drox,
+                        _ => MapOccupier.None
+                    }
+                };
+
+                #endregion
+            }
+
+            UniqueNameCandidates ??= [];
+
+            if (itemEntity.TryGetComponent<Sockets>(out var sockets))
+            {
+                try
+                {
+                    IsRgb = sockets.IsRGB;
+                    Sockets = sockets.NumberOfSockets;
+                    LargestLink = sockets.LargestLinkSize;
+                }
+                catch
+                {
+                }
+            }
+
+            if (weaponClass.Any(ClassName.Equals))
+                IsWeapon = true;
+
+            MapInfo.MapTier = itemEntity.TryGetComponent<MapKey>(out var map) ? map.Tier : 0;
+            MapInfo.IsMap = MapInfo.MapTier > 0;
+
+            if (Rarity != ItemRarity.Unique && MapInfo.IsMap)
+            {
+                MapInfo.MapType = MapTypes.None;
+
+                foreach (var itemList in itemEntity.GetComponent<Mods>().ItemMods)
+                {
+                    if (itemList.RawName.Contains("Shaped "))
+                    {
+                        MapInfo.MapType = MapTypes.Shaped;
+                        break;
+                    }
+                    else if (itemList.RawName.Contains("Elder "))
+                    {
+                        MapInfo.MapType = MapTypes.Elder;
+                        break;
+                    }
+                    else if (itemList.RawName == "InfectedMap")
+                    {
+                        MapInfo.MapType = MapTypes.Blighted;
+                        break;
+                    }
+                    else if (itemList.RawName == "UberInfectedMap__")
+                    {
+                        MapInfo.MapType = MapTypes.BlightRavaged;
+                        break;
+                    }
+                }
+
+                if (BaseName == "Valdo Map") MapInfo.MapType = MapTypes.Valdo;
+            }
+
+            if (itemEntity.TryGetComponent<Stack>(out var stack))
+            {
+                CurrencyInfo.StackSize = stack.Size;
+                CurrencyInfo.MaxStackSize = stack.Info.MaxStackSize;
+                if (BaseName.EndsWith(" Shard") || 
+                    BaseName.EndsWith(" Fragment") ||
+                    BaseName.EndsWith(" Splinter") ||
+                    BaseName.StartsWith("Splinter of"))
+                    CurrencyInfo.IsShard = true;
+            }
+
+            if (itemEntity.TryGetComponent<CapturedMonster>(out var capturedMonster))
+            {
+                CapturedMonsterName = capturedMonster.MonsterVariety?.MonsterName;
+            }
+
+            IsHovered = Core.GameController.Game.IngameState.UIHover.AsObject<NormalInventoryItem>().Address == Element?.Address;
+
+            ComputeType(itemEntity);
+        }
+        catch (Exception exception)
+        {
+            if (Core.Settings.DebugSettings.EnableDebugLogging)
+                Core.LogError($"Ninja Pricer.CustomItem Error:\n{exception}");
+        }
+
+    }
+
+    private void ComputeType(Entity itemEntity)
+    {
+        // sort items into types to use correct json data later from poe.ninja
+        // This might need tweaking since if this catches anything other than currency.
+        if (Path.StartsWith("Metadata/Items/Currency/Runegraft", StringComparison.Ordinal))
+        {
+            ItemType = ItemTypes.KalguuranRune;
+        }
+        else if (Path.StartsWith("Metadata/Items/MapFragments/", StringComparison.Ordinal) &&
+                Path.EndsWith("AllflamePack", StringComparison.Ordinal))
+        {
+            ItemType = ItemTypes.AllflameEmber;
+        }
+        else if (Path.StartsWith("Metadata/Items/Threads/", StringComparison.Ordinal))
+        {
+            ItemType = ItemTypes.Thread;
+        }
+        else if (Path.StartsWith("Metadata/Items/Viscera/", StringComparison.Ordinal))
+        {
+            ItemType = ItemTypes.Viscera;
+        }
+        else if (BaseName == "Imprinted Bestiary Orb")
+        {
+            ItemType = ItemTypes.Beast;
+        }
+        else if (ClassName == "MiscMapItem" &&
+                 Path.StartsWith("Metadata/Items/MapFragments/Primordial/", StringComparison.Ordinal) &&
+                 Path.EndsWith("Key", StringComparison.Ordinal))
+        {
+            ItemType = ItemTypes.Invitation;
+        }
+        else if (ClassName == "MiscMapItem" && Path == "Metadata/Items/Ultimatum/ItemisedTrial")
+        {
+            ItemType = ItemTypes.InscribedUltimatum;
+        }
+        else if (ClassName == "MapFragment" && Path.StartsWith("Metadata/Items/Scarabs/"))
+        {
+            ItemType = ItemTypes.Scarab;
+        }
+        else if (BaseName.EndsWith(" Ducat"))
+        {
+            ItemType = ItemTypes.Ducat;
+        }
+        else if (ClassName == "StackableCurrency" &&
+                 !BaseName.StartsWith("Crescent Splinter") &&
+                 !BaseName.StartsWith("Simulacrum") &&
+                 !BaseName.EndsWith("Delirium Orb") &&
+                 !BaseName.Contains("Essence") &&
+                 !BaseName.EndsWith(" Oil") &&
+                 !BaseName.Contains("Tattoo ") &&
+                 !BaseName.StartsWith("Omen ") &&
+                 !BaseName.EndsWith("Artifact") &&
+                 !BaseName.Contains("Astragali") &&
+                 !BaseName.Contains("Burial Medallion") &&
+                 !BaseName.Contains("Scrap Metal") &&
+                 !BaseName.Contains("Exotic Coinage") &&
+                 !BaseName.Contains("Remnant of") &&
+                 !BaseName.Contains("Timeless ") &&
+                 BaseName != "Prophecy" &&
+                 BaseName != "Charged Compass" &&
+                 ClassName != "MapFragment" &&
+                 !BaseName.EndsWith(" Fossil") &&
+                 !BaseName.StartsWith("Splinter of ") &&
+                 ClassName != "Incubator" &&
+                 !BaseName.EndsWith(" Catalyst") &&
+                 BaseName != "Valdo's Puzzle Box" &&
+                 !BaseName.StartsWith("Coin of") &&
+                 !BaseName.EndsWith(" Astrolabe") && 
+                 !BaseName.StartsWith("Memory of ", StringComparison.OrdinalIgnoreCase))
+        {
+            ItemType = ItemTypes.Currency;
+        }
+        else if (BaseName.EndsWith(" Astrolabe"))
+        {
+            ItemType = ItemTypes.Astrolabe;
+        }
+        else if (BaseName.StartsWith("Coin of"))
+        {
+            ItemType = ItemTypes.DjinnCoin;
+        }
+        else if (ClassName == "BrequelFruit")
+        {
+            ItemType = ItemTypes.Wombgift;
+        }
+        else if (BaseName.EndsWith(" Catalyst"))
+        {
+            ItemType = ItemTypes.Catalyst;
+        }
+        else if (BaseName.Contains("Astragali") || BaseName.Contains("Burial Medallion") || BaseName.Contains("Scrap Metal") || BaseName.Contains("Exotic Coinage"))
+        {
+            ItemType = ItemTypes.Artifact;
+        }
+        else if (BaseName.EndsWith(" Oil"))
+        {
+            ItemType = ItemTypes.Oil;
+        }
+        else if (BaseName.Contains("Tattoo "))
+        {
+            ItemType = ItemTypes.Tattoo;
+        }
+        else if (BaseName.StartsWith("Omen "))
+        {
+            ItemType = ItemTypes.Omen;
+        }
+        else if (Path.Contains("Metadata/Items/DivinationCards"))
+        {
+            ItemType = ItemTypes.DivinationCard;
+        }
+        else if (BaseName.Contains("Essence") || BaseName.Contains("Remnant of"))
+        {
+            ItemType = ItemTypes.Essence;
+        }
+        else if (ClassName == "MapFragment" || BaseName.Contains("Timeless ") || BaseName.StartsWith("Simulacrum") ||
+                 ClassName == "StackableCurrency" && BaseName.StartsWith("Splinter of ") ||
+                 BaseName.StartsWith("Crescent Splinter") ||
+                 ClassName == "VaultKey" ||
+                 BaseName == "Valdo's Puzzle Box" || 
+                 BaseName.StartsWith("Memory of ", StringComparison.OrdinalIgnoreCase))
+        {
+            ItemType = ItemTypes.Fragment;
+        }
+        else if (MapInfo.IsMap && Rarity != ItemRarity.Unique)
+        {
+            ItemType = ItemTypes.Map;
+        }
+        else if (BaseName.EndsWith(" Fossil"))
+        {
+            ItemType = ItemTypes.Fossil;
+        }
+        else if (ClassName == "DelveStackableSocketableCurrency")
+        {
+            ItemType = ItemTypes.Resonator;
+        }
+        else if (ClassName is "Incubator" or "IncubatorStackable")
+        {
+            ItemType = ItemTypes.Incubator;
+        }
+        else if (BaseName.EndsWith("Delirium Orb"))
+        {
+            ItemType = ItemTypes.DeliriumOrbs;
+        }
+        else if (BaseName.StartsWith("Vial "))
+        {
+            ItemType = ItemTypes.Vials;
+        }
+        else if (ClassName is "Support Skill Gem" or "Active Skill Gem")
+        {
+            ItemType = ItemTypes.SkillGem;
+        }
+        else if (Rarity != ItemRarity.Unique && BaseName is
+                     "Large Cluster Jewel" or
+                     "Medium Cluster Jewel" or
+                     "Small Cluster Jewel")
+        {
+            ItemType = ItemTypes.ClusterJewel;
+            var passiveCount = itemEntity?.GetComponent<LocalStats>()?.StatDictionary.GetValueOrDefault(ClusterJewelPassiveCountStat) ?? 0;
+            const string namePrefix = "Added Small Passive Skills grant: ";
+            var name = itemEntity?.GetComponent<Mods>()?.EnchantedStats.FirstOrDefault(x => x.StartsWith(namePrefix))?.Replace(namePrefix, null).Replace("\n", ", ");
+            ClusterJewelData = new ClusterJewelData(name, passiveCount);
+        }
+        else if (Rarity != ItemRarity.Unique && !IsMirrored && !IsCorrupted)
+        {
+            ItemType = ItemTypes.BaseType;
+        }
+        else
+        {
+            switch (Rarity) // Unique information
+            {
+                case ItemRarity.Unique when ClassName is "Amulet" or "Ring" or "Belt":
+                    ItemType = ItemTypes.UniqueAccessory;
+                    break;
+                case ItemRarity.Unique when itemEntity?.HasComponent<Armour>() == true || ClassName == "Quiver":
+                    ItemType = ItemTypes.UniqueArmour;
+                    break;
+                case ItemRarity.Unique when itemEntity?.HasComponent<Flask>() == true:
+                    ItemType = ItemTypes.UniqueFlask;
+                    break;
+                case ItemRarity.Unique when ClassName is "Jewel" or "AbyssJewel":
+                    ItemType = ItemTypes.UniqueJewel;
+                    break;
+                case ItemRarity.Unique when MapInfo.IsMap:
+                    ItemType = ItemTypes.UniqueMap;
+                    break;
+                case ItemRarity.Unique when itemEntity?.HasComponent<Weapon>() == true:
+                    ItemType = ItemTypes.UniqueWeapon;
+                    break;
+            }
+        }
+    }
+
+    // Forbidden Flame/Flesh's mod stat value is the passive id that it grants
+    private static string GetForbiddenJewelGrantedPassiveName(IEnumerable<ItemMod> mods)
+    {
+        foreach (var mod in mods)
+        {
+            var statNames = mod.ModRecord?.StatNames;
+            if (statNames == null) continue;
+
+            for (var i = 0; i < statNames.Length && i < mod.Values.Count; i++)
+            {
+                var stat = statNames[i]?.MatchingStat;
+                if (stat != ForbiddenFlameNotableStat && stat != ForbiddenFleshNotableStat) continue;
+
+                // The hash is stored as a signed 16 bit value, so node ids above 32767 arrive negative
+                // (61355 reads as -4181). Mask it back into the unsigned id space before looking up.
+                var name = Core.GameController.Files.PassiveSkills
+                    .GetPassiveSkillByPassiveId(mod.Values[i] & 0xFFFF)?.Name;
+                if (!string.IsNullOrEmpty(name)) return name;
+            }
+        }
+
+        return null;
+    }
+
+    public static Dictionary<GameStat, int> GetGameStats(IEnumerable<ItemMod> mods)
+    {
+        var stats = new Dictionary<GameStat, int>();
+
+        foreach (var mod in mods)
+        {
+            for (var i = 0; i < mod.ModRecord.StatNames.Length; i++)
+            {
+                var stat = mod.ModRecord.StatNames[i].MatchingStat;
+                var value = mod.Values[i];
+
+                if (stats.TryGetValue(stat, out var existing)) stats[stat] = existing + value;
+                else stats[stat] = value;
+            }
+        }
+
+        return stats;
+    }
+
+    public override string ToString()
+    {
+        return string.IsNullOrWhiteSpace(UniqueName) ? BaseName : UniqueName;
+    }
+}

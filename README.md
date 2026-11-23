@@ -1,4 +1,10 @@
-# Get-Chaos-Value
+# Get-Chaos-Value-forked
+
+Fork of [instantsc/Get-Chaos-Value](https://github.com/instantsc/Get-Chaos-Value), the live upstream.
+The plugin loads as **Ninja Price-forked** so it can sit side by side with the original in the same
+HUD: the plugin name, assembly, namespace and plugin-bridge keys are all suffixed, so it gets its
+own settings file (`config/<profile>/Ninja_Price_Forked.Main_settings.json`) and its own
+`NinjaData` cache instead of fighting the original over them.
 ExileAPI Plugin for instant price data comparison.
 
 https://www.ownedcore.com/forums/mmo/path-of-exile/poe-bots-programs/635847-poehud-plugin-ninja-pricer.html
@@ -38,8 +44,9 @@ plugin settings window:
 - **Respect Ignored Inventory Cells** - items in an ignored cell are not added to the inventory value.
 - **Hide Prices On Ignored Items** - also skip the price overlay on those items.
 - **Sync Cells From HighlightedItems** - read the `IgnoredCells` grid out of the HighlightedItems
-  `settings.json` (auto-detected inside the HUD folder, re-read about once a second, or point at
-  the file yourself). Cells coming from HighlightedItems are shown with a green box and cannot be
+  settings file - normally `<HUD>/config/<profile>/HighlightedItems_settings.json`, auto-detected,
+  re-read about once a second (int grids and boolean grids are both understood), or point at
+  the file yourself. Cells coming from HighlightedItems are shown with a green box and cannot be
   unticked here; tick extra cells in the grid to ignore them in Ninja Price only.
 - **Reload HighlightedItems Cells** / **Clear Own Ignored Cells** - force a re-read, or wipe the
   cells ticked in this plugin.
