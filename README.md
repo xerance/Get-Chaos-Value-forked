@@ -25,3 +25,24 @@ The plugin can also show the overall worth of a stash tab or inventory.
 
 Item that aren't available on poe.ninja show 0c as price.
 Item that have multiple variant (ex: Vessel of Vinktar) show a range between the lowest and highest cost. The plugin can't differentiate between them.
+
+## Fork change: ignored inventory cells
+
+This fork leaves items that sit in **ignored inventory cells** out of the inventory value
+total, using the same cell grid as the
+[HighlightedItems](https://github.com/ravand1990/HighlightedItems) plugin.
+
+Settings are under `Ignored Cell Settings`, with the 5x12 grid drawn at the bottom of the
+plugin settings window:
+
+- **Respect Ignored Inventory Cells** - items in an ignored cell are not added to the inventory value.
+- **Hide Prices On Ignored Items** - also skip the price overlay on those items.
+- **Sync Cells From HighlightedItems** - read the `IgnoredCells` grid out of the HighlightedItems
+  `settings.json` (auto-detected inside the HUD folder, re-read about once a second, or point at
+  the file yourself). Cells coming from HighlightedItems are shown with a green box and cannot be
+  unticked here; tick extra cells in the grid to ignore them in Ninja Price only.
+- **Reload HighlightedItems Cells** / **Clear Own Ignored Cells** - force a re-read, or wipe the
+  cells ticked in this plugin.
+
+As in HighlightedItems, only the top left cell of a multi-cell item is checked. The stash value is
+unaffected - this applies to the player inventory only.

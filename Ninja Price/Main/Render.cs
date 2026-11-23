@@ -218,6 +218,8 @@ public partial class Main
         }
         if (InventoryPanel.IsVisible)
         {
+            UpdateIgnoredCells();
+
             if (ShouldUpdateValuesInventory())
             {
                 // Format Inventory Items
@@ -238,6 +240,16 @@ public partial class Main
                 if (item == null || item.Element.Address == 0) continue; // Item is fucked, skip
                 if (!item.Element.IsVisible && item.ItemType != ItemTypes.None)
                     continue; // Disregard non visible items as that usually means they aren't part of what we want to look at
+
+                // Items in cells marked as ignored (own grid or synced from HighlightedItems) are not
+                // counted towards the inventory value, and optionally get no price overlay either.
+                if (IsInIgnoredInventoryCell(item))
+                {
+                    if (!Settings.IgnoredCellSettings.HideIgnoredItemPrices.Value)
+                        InventoryItemsToDrawList.Add(item);
+
+                    continue;
+                }
 
                 InventoryTabValue += item.PriceData.MinChaosValue;
                 InventoryItemsToDrawList.Add(item);

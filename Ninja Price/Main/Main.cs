@@ -48,6 +48,10 @@ public partial class Main : BaseSettingsPlugin<Settings.Settings>
             UniqueArtMapping = GetUniqueArtMapping();
         };
         Settings.DataSourceSettings.SyncCurrentLeague.OnValueChanged += (_, _) => SyncCurrentLeague();
+        Settings.IgnoredCellSettings.ReloadHighlightedItemsCells.OnPressed += () => ReloadHighlightedItemsIgnoredCells(true);
+        Settings.IgnoredCellSettings.ClearOwnIgnoredCells.OnPressed += ClearOwnIgnoredCells;
+        Settings.IgnoredCellSettings.SyncFromHighlightedItems.OnValueChanged += (_, _) => ReloadHighlightedItemsIgnoredCells(true);
+        ReloadHighlightedItemsIgnoredCells(true);
         CustomItem.InitCustomItem(this);
         Settings.DebugSettings.ResetInspectedItem.OnPressed += () =>
         {
