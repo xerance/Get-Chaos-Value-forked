@@ -38,18 +38,29 @@ This fork leaves items that sit in **ignored inventory cells** out of the invent
 total, using the same cell grid as the
 [HighlightedItems](https://github.com/ravand1990/HighlightedItems) plugin.
 
-Settings are under `Ignored Cell Settings`, with the 5x12 grid drawn at the bottom of the
-plugin settings window:
+Settings are under `Ignored Cell Settings`, with a read-only copy of the 5x12 grid drawn at the
+bottom of the plugin settings window:
 
-- **Respect Ignored Inventory Cells** - items in an ignored cell are not added to the inventory value.
+- **Respect HighlightedItems' Ignored Cells** - items in an ignored cell are not added to the
+  inventory value.
 - **Hide Prices On Ignored Items** - also skip the price overlay on those items.
-- **Sync Cells From HighlightedItems** - read the `IgnoredCells` grid out of the HighlightedItems
-  settings file - normally `<HUD>/config/<profile>/HighlightedItems_settings.json`, auto-detected,
-  re-read about once a second (int grids and boolean grids are both understood), or point at
-  the file yourself. Cells coming from HighlightedItems are shown with a green box and cannot be
-  unticked here; tick extra cells in the grid to ignore them in Ninja Price only.
-- **Reload HighlightedItems Cells** / **Clear Own Ignored Cells** - force a re-read, or wipe the
-  cells ticked in this plugin.
+- **HighlightedItems settings file** - normally auto-detected at
+  `<HUD>/config/<profile>/HighlightedItems_settings.json` (newest profile wins; both the int grid
+  of older HighlightedItems builds and the boolean grid of current ones are understood), or point
+  at the file yourself.
+- **Reload Ignored Cells Now** - force a re-read; otherwise the file is checked about once a second
+  and re-parsed whenever its timestamp changes.
 
-As in HighlightedItems, only the top left cell of a multi-cell item is checked. The stash value is
-unaffected - this applies to the player inventory only.
+The grid has a single owner: HighlightedItems. There is deliberately no second grid to keep in
+sync, and the checkboxes shown here only mirror the file - edit the cells in HighlightedItems and
+this plugin follows. Two-way editing is not offered because the HUD writes each plugin's whole
+settings file from memory when it saves, so anything written into HighlightedItems' file from the
+outside would be silently overwritten.
+
+The cell of an item is worked out from the inventory geometry (grid origin plus the item's own cell
+size), falling back to the deprecated `InventPosX/Y` properties. As in HighlightedItems, only the
+top left cell of a multi-cell item is checked. The stash value is unaffected - this applies to the
+player inventory only.
+
+The settings window also shows what the last inventory pass saw ("12 item(s), 3 in ignored cells"),
+which is the quickest way to tell whether the grid is being applied.
