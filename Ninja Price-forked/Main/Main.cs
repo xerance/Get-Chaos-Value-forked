@@ -29,7 +29,7 @@ public partial class Main : BaseSettingsPlugin<Settings.Settings>
 
     public override bool Initialise()
     {
-        Name = "Ninja Price";
+        Name = "Ninja Price-forked";
         NinjaDirectory = Path.Join(DirectoryFullName, "NinjaData");
         Directory.CreateDirectory(NinjaDirectory);
 

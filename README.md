@@ -1,4 +1,8 @@
-# Get-Chaos-Value
+# Get-Chaos-Value-forked
+
+Fork of [DetectiveSquirrel/Get-Chaos-Value](https://github.com/DetectiveSquirrel/Get-Chaos-Value).
+The plugin loads as **Ninja Price-forked** so it can sit side by side with the original in the
+same HUD (it keeps its own settings and its own `NinjaData` folder).
 ExileAPI Plugin for instant price data comparison.
 
 https://www.ownedcore.com/forums/mmo/path-of-exile/poe-bots-programs/635847-poehud-plugin-ninja-pricer.html
