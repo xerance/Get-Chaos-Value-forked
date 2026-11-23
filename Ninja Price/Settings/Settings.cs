@@ -19,6 +19,7 @@ public class Settings : ISettings
     public DebugSettings DebugSettings { get; set; } = new();
     public StashValueSettings StashValueSettings { get; set; } = new();
     public InventoryValueSettings InventoryValueSettings { get; set; } = new();
+    public IgnoredCellSettings IgnoredCellSettings { get; set; } = new();
     public GroundItemSettings GroundItemSettings { get; set; } = new();
     public UniqueIdentificationSettings UniqueIdentificationSettings { get; set; } = new();
     public TradeWindowSettings TradeWindowSettings { get; set; } = new();
