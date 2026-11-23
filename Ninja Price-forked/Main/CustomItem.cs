@@ -4,13 +4,13 @@ using ExileCore.PoEMemory.Elements.InventoryElements;
 using ExileCore.PoEMemory.FilesInMemory;
 using ExileCore.PoEMemory.MemoryObjects;
 using ExileCore.Shared.Enums;
-using Ninja_Price.Enums;
+using Ninja_Price_Forked.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using ExileCore.PoEMemory.Models;
 
-namespace Ninja_Price.Main;
+namespace Ninja_Price_Forked.Main;
 
 public record ClusterJewelData(string Name, int PassiveCount);
 
@@ -18,6 +18,8 @@ public class CustomItem
 {
     //because inlining is weird
     private static readonly GameStat ClusterJewelPassiveCountStat = Enum.Parse<GameStat>(nameof(GameStat.LocalJewelExpansionPassiveNodeCount));
+    private static readonly GameStat ForbiddenFlameNotableStat = Enum.Parse<GameStat>(nameof(GameStat.UniqueJewelGrantsNotableHashPart1));
+    private static readonly GameStat ForbiddenFleshNotableStat = Enum.Parse<GameStat>(nameof(GameStat.UniqueJewelGrantsNotableHashPart2));
 
     public static Main Core;
     public string BaseName;
@@ -27,6 +29,7 @@ public class CustomItem
     public bool IsIdentified;
     public Influence InfluenceFlags;
     public bool IsCorrupted;
+    public int CorruptionImplicitCount;
     public bool IsElder;
     public bool IsShaper;
     public bool IsCrusader;
@@ -48,13 +51,16 @@ public class CustomItem
     public string GemName;
     public readonly ItemRarity Rarity;
     public readonly int Sockets;
-    public readonly List<string> UniqueNameCandidates;
+    // init here so a throw in the entity ctor (swallowed by its catch) can't leave these null - ground render then threw between ImGui Begin/End
+    public readonly List<string> UniqueNameCandidates = [];
     public ItemTypes ItemType;
     public ClusterJewelData ClusterJewelData;
     public readonly List<string> EnchantedStats;
     public readonly string CapturedMonsterName;
-    public HashSet<string> FoulbornMods;
+    public HashSet<string> FoulbornMods = [];
+    public readonly string GrantedPassiveName;
     public readonly int WombgiftLevel;
+    public readonly List<(string Translation, List<int> Values)> ImplicitModsData = [];
 
     public readonly uint EntityId;
     public MapData MapInfo { get; set; } =  new MapData();
@@ -104,6 +110,7 @@ public class CustomItem
         ClassName = "";
         BaseName = "";
         UniqueNameCandidates = [];
+        FoulbornMods = [];
     }
 
     public CustomItem(Entity itemEntity, Element element)
@@ -180,6 +187,7 @@ public class CustomItem
                 EnchantedStats = mods.EnchantedStats;
                 UniqueName = mods.UniqueName?.Replace('\x2019', '\x27');
                 IsMirrored = mods.IsMirrored;
+                CorruptionImplicitCount = IsCorrupted ? mods.ImplicitMods.Count : 0;
                 if (!IsIdentified && Rarity == ItemRarity.Unique)
                 {
                     var artPath = itemEntity.GetComponent<RenderItem>()?.ResourcePath;
@@ -192,6 +200,14 @@ public class CustomItem
                 }
 
                 FoulbornMods = mods.ExplicitMods.Where(x => x.RawName.StartsWith("MutatedUnique", StringComparison.Ordinal)).Select(x => x.Translation).ToHashSet();
+
+                ImplicitModsData.AddRange(mods.ImplicitMods.Select(x => (x.Translation, x.Values)));
+
+                if (UniqueName == "Forbidden Flesh" ||
+                    UniqueName == "Forbidden Flame")
+                {
+                    GrantedPassiveName = GetForbiddenJewelGrantedPassiveName(mods.ExplicitMods);
+                }
 
                 var itemStats = GetGameStats(mods.ImplicitMods);
 
@@ -312,6 +328,14 @@ public class CustomItem
         {
             ItemType = ItemTypes.AllflameEmber;
         }
+        else if (Path.StartsWith("Metadata/Items/Threads/", StringComparison.Ordinal))
+        {
+            ItemType = ItemTypes.Thread;
+        }
+        else if (Path.StartsWith("Metadata/Items/Viscera/", StringComparison.Ordinal))
+        {
+            ItemType = ItemTypes.Viscera;
+        }
         else if (BaseName == "Imprinted Bestiary Orb")
         {
             ItemType = ItemTypes.Beast;
@@ -329,6 +353,10 @@ public class CustomItem
         else if (ClassName == "MapFragment" && Path.StartsWith("Metadata/Items/Scarabs/"))
         {
             ItemType = ItemTypes.Scarab;
+        }
+        else if (BaseName.EndsWith(" Ducat"))
+        {
+            ItemType = ItemTypes.Ducat;
         }
         else if (ClassName == "StackableCurrency" &&
                  !BaseName.StartsWith("Crescent Splinter") &&
@@ -354,7 +382,8 @@ public class CustomItem
                  !BaseName.EndsWith(" Catalyst") &&
                  BaseName != "Valdo's Puzzle Box" &&
                  !BaseName.StartsWith("Coin of") &&
-                 !BaseName.EndsWith(" Astrolabe"))
+                 !BaseName.EndsWith(" Astrolabe") && 
+                 !BaseName.StartsWith("Memory of ", StringComparison.OrdinalIgnoreCase))
         {
             ItemType = ItemTypes.Currency;
         }
@@ -402,7 +431,8 @@ public class CustomItem
                  ClassName == "StackableCurrency" && BaseName.StartsWith("Splinter of ") ||
                  BaseName.StartsWith("Crescent Splinter") ||
                  ClassName == "VaultKey" ||
-                 BaseName == "Valdo's Puzzle Box")
+                 BaseName == "Valdo's Puzzle Box" || 
+                 BaseName.StartsWith("Memory of ", StringComparison.OrdinalIgnoreCase))
         {
             ItemType = ItemTypes.Fragment;
         }
@@ -473,6 +503,30 @@ public class CustomItem
                     break;
             }
         }
+    }
+
+    // Forbidden Flame/Flesh's mod stat value is the passive id that it grants
+    private static string GetForbiddenJewelGrantedPassiveName(IEnumerable<ItemMod> mods)
+    {
+        foreach (var mod in mods)
+        {
+            var statNames = mod.ModRecord?.StatNames;
+            if (statNames == null) continue;
+
+            for (var i = 0; i < statNames.Length && i < mod.Values.Count; i++)
+            {
+                var stat = statNames[i]?.MatchingStat;
+                if (stat != ForbiddenFlameNotableStat && stat != ForbiddenFleshNotableStat) continue;
+
+                // The hash is stored as a signed 16 bit value, so node ids above 32767 arrive negative
+                // (61355 reads as -4181). Mask it back into the unsigned id space before looking up.
+                var name = Core.GameController.Files.PassiveSkills
+                    .GetPassiveSkillByPassiveId(mod.Values[i] & 0xFFFF)?.Name;
+                if (!string.IsNullOrEmpty(name)) return name;
+            }
+        }
+
+        return null;
     }
 
     public static Dictionary<GameStat, int> GetGameStats(IEnumerable<ItemMod> mods)

@@ -1,4 +1,4 @@
-﻿namespace Ninja_Price.Enums;
+﻿namespace Ninja_Price_Forked.Enums;
 
 public enum MapTypes
 {

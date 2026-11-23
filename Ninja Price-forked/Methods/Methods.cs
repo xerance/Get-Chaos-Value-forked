@@ -2,18 +2,22 @@ using ExileCore.PoEMemory.Components;
 using ExileCore.PoEMemory.Elements;
 using ExileCore.PoEMemory.Elements.InventoryElements;
 using ExileCore.Shared.Enums;
-using Ninja_Price.API.PoeNinja;
-using Ninja_Price.Enums;
+using Ninja_Price_Forked.API.PoeNinja;
+using Ninja_Price_Forked.Enums;
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
+using System.Windows.Forms;
 using ExileCore;
 using ExileCore.PoEMemory;
 using ExileCore.PoEMemory.FilesInMemory;
 using Color = SharpDX.Color;
 
-namespace Ninja_Price.Main;
+namespace Ninja_Price_Forked.Main;
 
 public partial class Main
 {
@@ -90,6 +94,103 @@ public partial class Main
 
     private static float? ConvertSparklinePoint(object value) => value == null ? null : Convert.ToSingle(value);
 
+    private static bool NinjaNameEquals(string ninjaName, string gameName) =>
+        ninjaName != null && gameName != null &&
+        string.Equals(ninjaName.Replace('\x2019', '\x27'), gameName.Replace('\x2019', '\x27'), StringComparison.Ordinal);
+
+    private static readonly string[] VisceraNamePrefixes = ["Lesser ", "Greater ", "Nightmarish "];
+    private static readonly Regex ModRangePattern = new(@"\(\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*\)", RegexOptions.Compiled);
+    private static readonly Regex ModNumberPattern = new(@"\d+(?:\.\d+)?", RegexOptions.Compiled);
+    private static readonly Regex ModWhitespacePattern = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex ModBracketedAliasPattern = new(@"\[(?:[^\]]*\|)?([^\]]+)\]", RegexOptions.Compiled);
+    private static readonly ConcurrentDictionary<string, string> CanonicalVisceraNames = [];
+    private static string CanonicalVisceraName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return string.Empty;
+        return CanonicalVisceraNames.GetOrAdd(name, n =>
+        {
+            var result = n.Replace('\x2019', '\x27');
+            foreach (var prefix in VisceraNamePrefixes)
+            {
+                if (result.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    return result[prefix.Length..];
+                }
+            }
+
+            return result;
+        });
+    }
+
+    private static string NormalizeModText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        var result = ModBracketedAliasPattern.Replace(text.Replace('\x2019', '\x27'), m => m.Groups[1].Value);
+        result = ModRangePattern.Replace(result, "#");
+        result = ModNumberPattern.Replace(result, "#");
+        return ModWhitespacePattern.Replace(result, " ").Trim();
+    }
+
+    private static List<(double Low, double High)> ParseModRanges(string text)
+    {
+        var ranges = new List<(double Low, double High)>();
+        if (string.IsNullOrEmpty(text)) return ranges;
+        foreach (Match match in ModRangePattern.Matches(text))
+        {
+            var low = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+            var high = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+            ranges.Add((Math.Min(low, high), Math.Max(low, high)));
+        }
+
+        return ranges;
+    }
+
+    private static List<double> ParseModValues(string text)
+    {
+        var values = new List<double>();
+        if (string.IsNullOrEmpty(text)) return values;
+        foreach (Match match in ModNumberPattern.Matches(text))
+        {
+            var v = double.Parse(match.Value, CultureInfo.InvariantCulture);
+            values.Add(v);
+        }
+
+        return values;
+    }
+
+    private static bool MatchesVisceraImplicitModifiers(List<(string Text, List<double> Values)> itemImplicits, List<Visceras.ImplicitModifier> feedImplicits, bool enforceValues)
+    {
+        if (feedImplicits == null || feedImplicits.Count == 0) return itemImplicits.Count == 0;
+        if (feedImplicits.Count != itemImplicits.Count) return false;
+        foreach (var feedMod in feedImplicits)
+        {
+            var canon = NormalizeModText(feedMod.Text);
+            var itemMod = itemImplicits.FirstOrDefault(x => x.Text == canon);
+            if (itemMod.Text == null) return false;
+            if (!enforceValues) continue;
+            var ranges = ParseModRanges(feedMod.Text);
+            if (ranges.Count > 0)
+            {
+                if (ranges.Count != itemMod.Values.Count) return false;
+                for (var i = 0; i < ranges.Count; i++)
+                {
+                    if (itemMod.Values[i] < ranges[i].Low || itemMod.Values[i] > ranges[i].High) return false;
+                }
+            }
+            else
+            {
+                if (itemMod.Values.Count > 0)
+                {
+                    var feedNumbers = ModNumberPattern.Matches(feedMod.Text)
+                        .Select(m => double.Parse(m.Value, CultureInfo.InvariantCulture)).ToHashSet();
+                    if (feedNumbers.Count > 0 && !itemMod.Values.All(v => feedNumbers.Contains(v))) return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     private void GetHoveredItem()
     {
         try
@@ -117,12 +218,43 @@ public partial class Main
                 }
             }
 
-            HoveredItemTooltipRect = HoveredItem?.Element?.Tooltip?.GetClientRectCache;
+            HoveredItemTooltipRect = GetHoveredTooltipRect(uiHover) ?? HoveredItem?.Element?.Tooltip?.GetClientRectCache;
         }
         catch (Exception ex)
         {
             DebugWindow.LogError($"Failed to get the hovered item: {ex}");
         }
+    }
+
+    /// <summary>
+    /// The rectangle of the tooltip the game is showing for whatever is under the mouse. Unlike
+    /// HoveredItem, this also works for things the plugin skips, such as items in the currency tab
+    /// that report ToolTipType.ItemInChat.
+    /// </summary>
+    private SharpDX.RectangleF? GetHoveredTooltipRect(Element uiHover)
+    {
+        // While Alt is held, the game keeps showing the advanced tooltip of the item it showed when
+        // Alt went down, wherever the cursor goes, while the hover follows the cursor. So keep using
+        // that tooltip until Alt is let go.
+        var altHeld = Input.IsKeyDown(Keys.Menu);
+        var tooltip = altHeld && _tooltipShownWhileAltHeld is { Address: not 0, IsVisible: true } heldTooltip
+            ? heldTooltip
+            : FindShownTooltip(uiHover);
+        _tooltipShownWhileAltHeld = altHeld ? tooltip : null;
+        if (tooltip == null) return null;
+        var rect = tooltip.GetClientRect();
+        return rect.Width > 0 && rect.Height > 0 ? rect : null;
+    }
+
+    private Element _tooltipShownWhileAltHeld;
+
+    private Element FindShownTooltip(Element uiHover)
+    {
+        // While Alt is held for the advanced tooltip, UIHover reads 0, but UIHoverTooltip still
+        // points at the element whose tooltip is showing.
+        var hovered = uiHover is { Address: not 0, IsValid: true } ? uiHover : GameController.IngameState.UIHoverTooltip;
+        var tooltip = hovered is { Address: not 0, IsValid: true } ? hovered.Tooltip : null;
+        return tooltip is { Address: not 0, IsVisible: true } ? tooltip : null;
     }
 
     private void GetValue(IEnumerable<CustomItem> items)
@@ -221,6 +353,17 @@ public partial class Main
                         }
 
                         break;
+
+                    case ItemTypes.Ducat:
+                        var ducatSearch = CollectedData.Ducats.LinesByName.GetValueOrDefault(item.BaseName);
+                        if (ducatSearch != default)
+                        {
+                            item.PriceData.MinChaosValue = item.CurrencyInfo.StackSize * ducatSearch.ChaosEquivalent;
+                            SetPriceChangeData(item.PriceData, ducatSearch.Line.sparkline.totalChange, ducatSearch.Line.sparkline.data);
+                            item.PriceData.DetailsId = ducatSearch.Item.detailsId;
+                        }
+
+                        break;
                     case ItemTypes.Catalyst:
                         var catalystSearch = CollectedData.Currency.LinesByName.GetValueOrDefault(item.BaseName);
                         if (catalystSearch != default)
@@ -303,6 +446,60 @@ public partial class Main
 
                         break;
                         }
+                    case ItemTypes.Thread:
+                        var threadSearch = CollectedData.Threads.LinesByName.GetValueOrDefault(item.BaseName);
+                        if (threadSearch != default)
+                        {
+                            item.PriceData.MinChaosValue = item.CurrencyInfo.StackSize * threadSearch.ChaosEquivalent;
+                            SetPriceChangeData(item.PriceData, threadSearch.Line.sparkline.totalChange, threadSearch.Line.sparkline.data);
+                            item.PriceData.DetailsId = threadSearch.Item.detailsId;
+                        }
+
+                        break;
+                    case ItemTypes.Viscera:
+                    {
+                        var canonBaseName = CanonicalVisceraName(item.BaseName);
+                        var visceraCandidates = (CollectedData.Visceras.Lines ?? [])
+                            .Where(x => CanonicalVisceraName(x.Name) == canonBaseName)
+                            .ToList();
+                        if (visceraCandidates.Count == 0)
+                        {
+                            break;
+                        }
+
+                        var itemImplicits = item.ImplicitModsData
+                            .Select(x => (Text: NormalizeModText(x.Translation), ParseModValues(x.Translation)))
+                            .ToList();
+                        var visceraMatches = visceraCandidates
+                            .Where(x => MatchesVisceraImplicitModifiers(itemImplicits, x.ImplicitModifiers, enforceValues: true))
+                            .ToList();
+                        if (visceraMatches.Count == 0)
+                        {
+                            visceraMatches = visceraCandidates
+                                .Where(x => MatchesVisceraImplicitModifiers(itemImplicits, x.ImplicitModifiers, enforceValues: false))
+                                .ToList();
+                        }
+
+                        if (visceraMatches.Count == 0)
+                        {
+                            visceraMatches = visceraCandidates;
+                        }
+
+                        if (visceraMatches.Count == 1)
+                        {
+                            item.PriceData.MinChaosValue = visceraMatches[0].ChaosValue ?? 0;
+                            SetPriceChangeData(item.PriceData, visceraMatches[0].Sparkline?.TotalChange, visceraMatches[0].Sparkline?.Data);
+                            item.PriceData.DetailsId = visceraMatches[0].DetailsId;
+                        }
+                        else if (visceraMatches.Count > 1)
+                        {
+                            item.PriceData.MinChaosValue = visceraMatches.Min(x => x.ChaosValue) ?? 0;
+                            item.PriceData.MaxChaosValue = visceraMatches.Max(x => x.ChaosValue) ?? 0;
+                            item.PriceData.DetailsId = string.Join("\n--", visceraMatches.Select(x => x.DetailsId));
+                        }
+
+                        break;
+                    }
                     case ItemTypes.SkillGem:
                         var displayText = !string.IsNullOrEmpty(item.GemName) ? item.GemName : item.BaseName;
                         var fittingGems = CollectedData.SkillGems.Lines
@@ -561,12 +758,32 @@ public partial class Main
                     }
                     case ItemTypes.UniqueJewel:
                     {
+                        bool foundForbidden = false;
+                        if (!string.IsNullOrEmpty(item.GrantedPassiveName) && !string.IsNullOrEmpty(item.UniqueName))
+                        {
+                            var line = CollectedData.ForbiddenJewels.Lines?.Find(x =>
+                                NinjaNameEquals(x.Variant, item.UniqueName) && 
+                                NinjaNameEquals(x.Name, item.GrantedPassiveName));
+                            if (line != null)
+                            {
+                                item.PriceData.MinChaosValue = line.ChaosValue ?? 0;
+                                SetPriceChangeData(item.PriceData, line.SparkLine?.TotalChange, line.SparkLine?.Data);
+                                item.PriceData.DetailsId = line.DetailsId;
+                                foundForbidden = true;
+                            }
+                        }
+
+                        if (foundForbidden)
+                        {
+                            break;
+                        }
+
                         var uniqueName = item.UniqueName;
                         if (item.FoulbornMods.Any() && !string.IsNullOrEmpty(uniqueName))
                         {
                             uniqueName = $"Foulborn {uniqueName}";
                         }
-                        
+
                         var uniqueJewelSearch = CollectedData.UniqueJewels.Lines.FindAll(x =>
                             x.Name == uniqueName || item.UniqueNameCandidates.Contains(x.Name));
                         if (uniqueJewelSearch.Where(x => MatchesMutatedModifiers(item.FoulbornMods, x.MutatedModifiers?.Select(m => m.Text))).ToList() is { Count: > 0 } refined)
@@ -837,7 +1054,8 @@ public partial class Main
                                     GetValue(sacItem);
                                     var gainItem = new CustomItem(ultimatumTrial.RewardItemWord.Text, gainUniqueType ?? ItemTypes.None) { MapInfo = { MapTier = 16 } };
                                     GetValue(gainItem);
-                                    item.PriceData.MinChaosValue = gainItem.PriceData.MinChaosValue - sacItem.PriceData.MinChaosValue;
+                                    // the reward name can match several lines (variants, links), and MaxChaosValue is what this plugin uses elsewhere to flag value, so take the dearest match
+                                    item.PriceData.MinChaosValue = gainItem.PriceData.MaxChaosValue - sacItem.PriceData.MinChaosValue;
                                     item.PriceData.DetailsId = $"ultimatum-inscribed-unique-{sacItem.PriceData.DetailsId}-{gainItem.PriceData.DetailsId}";
                                     break;
                                 }

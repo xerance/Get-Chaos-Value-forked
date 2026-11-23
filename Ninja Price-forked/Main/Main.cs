@@ -1,17 +1,16 @@
 using ExileCore;
 using ExileCore.PoEMemory.MemoryObjects;
 using Newtonsoft.Json;
-using Ninja_Price.API.PoeNinja;
+using Ninja_Price_Forked.API.PoeNinja;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using ExileCore.PoEMemory.Models;
 
-namespace Ninja_Price.Main;
+namespace Ninja_Price_Forked.Main;
 
 public partial class Main : BaseSettingsPlugin<Settings.Settings>
 {
@@ -23,9 +22,6 @@ public partial class Main : BaseSettingsPlugin<Settings.Settings>
     private int _updating;
     public Dictionary<string, List<string>> UniqueArtMapping = new Dictionary<string, List<string>>();
     private Dictionary<string, string> _soundFiles = [];
-
-    [GeneratedRegex("<[^>]*>{{(?<data>[^}]*)}}")]
-    private static partial Regex StripTagsRegex();
 
     public override bool Initialise()
     {
@@ -61,13 +57,13 @@ public partial class Main : BaseSettingsPlugin<Settings.Settings>
         {
             _inspectedItem = null;
         };
-        GameController.PluginBridge.SaveMethod("NinjaPrice.GetValue", (Entity e) =>
+        GameController.PluginBridge.SaveMethod("NinjaPriceForked.GetValue", (Entity e) =>
         {
             var customItem = new CustomItem(e, null);
             GetValue(customItem);
             return customItem.PriceData.MinChaosValue;
         });
-        GameController.PluginBridge.SaveMethod("NinjaPrice.GetBaseItemTypeValue", (BaseItemType baseItemType) =>
+        GameController.PluginBridge.SaveMethod("NinjaPriceForked.GetBaseItemTypeValue", (BaseItemType baseItemType) =>
         {
             var customItem = new CustomItem(baseItemType);
             GetValue(customItem);

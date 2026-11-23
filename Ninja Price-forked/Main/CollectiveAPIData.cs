@@ -1,6 +1,6 @@
-using Ninja_Price.API.PoeNinja;
+using Ninja_Price_Forked.API.PoeNinja;
 
-namespace Ninja_Price.Main;
+namespace Ninja_Price_Forked.Main;
 
 public class CollectiveApiData
 {
@@ -20,6 +20,9 @@ public class CollectiveApiData
     public CurrencyOverviewData.RootObject AllflameEmbers { get; set; } = new();
     public CurrencyOverviewData.RootObject DjinnCoins { get; set; } = new();
     public CurrencyOverviewData.RootObject Astrolabe { get; set; } = new();
+    public CurrencyOverviewData.RootObject Ducats { get; set; } = new();
+    public CurrencyOverviewData.RootObject Threads { get; set; } = new();
+    public Visceras.RootObject Visceras { get; set; } = new();
 
     public Invitations.RootObject Invitations { get; set; } = new();
     public Vials.RootObject Vials { get; set; } = new();
@@ -29,6 +32,7 @@ public class CollectiveApiData
     public UniqueArmours.RootObject UniqueArmours { get; set; } = new();
     public UniqueFlasks.RootObject UniqueFlasks { get; set; } = new();
     public UniqueJewels.RootObject UniqueJewels { get; set; } = new();
+    public ForbiddenJewels.RootObject ForbiddenJewels { get; set; } = new();
     public UniqueMaps.RootObject UniqueMaps { get; set; } = new();
     public UniqueWeapons.RootObject UniqueWeapons { get; set; } = new();
     public WhiteMaps.RootObject WhiteMaps { get; set; } = new();

@@ -1,4 +1,4 @@
-namespace Ninja_Price.Main;
+namespace Ninja_Price_Forked.Main;
 
 public enum GroundItemProcessingType
 {

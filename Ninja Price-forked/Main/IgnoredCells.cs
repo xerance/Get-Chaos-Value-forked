@@ -8,7 +8,7 @@ using System.IO;
 using System.Numerics;
 using System.Text;
 
-namespace Ninja_Price.Main;
+namespace Ninja_Price_Forked.Main;
 
 /// <summary>
 /// Support for ignoring player inventory cells, mirroring the "Ignored Inventory Slots" grid of
@@ -89,12 +89,46 @@ public partial class Main
         }
     }
 
+    private static IEnumerable<string> EnumerateSelfAndChildren(string directory)
+    {
+        yield return directory;
+        foreach (var child in EnumerateDirectoriesSafe(directory, "*"))
+            yield return child;
+    }
+
+    private static IEnumerable<string> EnumerateDirectoriesSafe(string directory, string pattern)
+    {
+        try
+        {
+            return Directory.EnumerateDirectories(directory, pattern);
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
+    private static IEnumerable<string> EnumerateFilesSafe(string directory, string pattern)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(directory, pattern);
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
     private string ResolveHighlightedItemsSettingsPath()
     {
         var configured = Settings.IgnoredCellSettings.HighlightedItemsSettingsPath?.Value;
         if (!string.IsNullOrWhiteSpace(configured))
             return File.Exists(configured) ? configured : null;
 
+        // The HUD keeps plugin settings in <HUD>/config/<profile>/<PluginId>_settings.json, so the
+        // file normally lives next to ours, e.g. config/global/HighlightedItems_settings.json. Older
+        // layouts kept a settings.json inside the plugin's own folder, hence the fallbacks below.
         var relativeCandidates = new[]
         {
             Path.Join("HighlightedItems", "settings.json"),
@@ -105,6 +139,21 @@ public partial class Main
 
         foreach (var root in GetIgnoredCellSearchRoots())
         {
+            // Newest match wins: with several profiles, the active one is the one being written to.
+            var newestMatch = (Path: (string)null, WriteTime: DateTime.MinValue);
+            foreach (var directory in EnumerateSelfAndChildren(root))
+            {
+                foreach (var file in EnumerateFilesSafe(directory, "*ighlighted*tems*_settings.json"))
+                {
+                    var writeTime = File.GetLastWriteTimeUtc(file);
+                    if (writeTime > newestMatch.WriteTime)
+                        newestMatch = (file, writeTime);
+                }
+            }
+
+            if (newestMatch.Path != null)
+                return newestMatch.Path;
+
             foreach (var relative in relativeCandidates)
             {
                 var candidate = Path.Join(root, relative);
@@ -113,18 +162,11 @@ public partial class Main
             }
 
             // Tolerate renamed plugin folders, e.g. "HighlightedItems-master".
-            try
+            foreach (var directory in EnumerateDirectoriesSafe(root, "*ighlighted*"))
             {
-                foreach (var directory in Directory.EnumerateDirectories(root, "*ighlighted*"))
-                {
-                    var candidate = Path.Join(directory, "settings.json");
-                    if (File.Exists(candidate))
-                        return candidate;
-                }
-            }
-            catch (Exception)
-            {
-                // Unreadable directory, keep looking.
+                var candidate = Path.Join(directory, "settings.json");
+                if (File.Exists(candidate))
+                    return candidate;
             }
         }
 
@@ -184,10 +226,16 @@ public partial class Main
 
                 for (var column = 0; column < Math.Min(IgnoredCellColumnCount, columns.Count); column++)
                 {
-                    if (columns[column].Type is not (JTokenType.Integer or JTokenType.Float or JTokenType.Boolean))
-                        continue;
+                    // Older HighlightedItems builds store an int grid, current ones store booleans.
+                    var token = columns[column];
+                    var ignored = token.Type switch
+                    {
+                        JTokenType.Boolean => token.Value<bool>(),
+                        JTokenType.Integer or JTokenType.Float => token.Value<double>() > 0,
+                        _ => false,
+                    };
 
-                    if (columns[column].Value<int>() <= 0)
+                    if (!ignored)
                         continue;
 
                     _highlightedItemsIgnoredCells[row, column] = true;
@@ -289,8 +337,10 @@ public partial class Main
 
     private void DrawIgnoredCellsSettings()
     {
-        ImGui.BeginChild("##NinjaPriceIgnoredCellsMain", new Vector2(ImGui.GetContentRegionAvail().X, 230f), ImGuiChildFlags.Border,
-            ImGuiWindowFlags.NoScrollWithMouse);
+        // Plain two-argument BeginChild on purpose: the flag enums moved around between the
+        // ImGui.NET and Hexa.NET.ImGui bindings, this overload exists in both.
+        ImGui.Separator();
+        ImGui.BeginChild("##NinjaPriceIgnoredCellsMain", new Vector2(ImGui.GetContentRegionAvail().X, 230f));
         ImGui.Text("Ignored Inventory Cells (checked = ignored, not counted in the inventory value)");
         ImGui.Text(Settings.IgnoredCellSettings.SyncFromHighlightedItems.Value
             ? $"HighlightedItems: {_highlightedItemsStatus}"
@@ -298,8 +348,7 @@ public partial class Main
         ImGui.Text("Cells with a green box come from HighlightedItems and cannot be unticked here.");
 
         var contentRegionAvail = ImGui.GetContentRegionAvail();
-        ImGui.BeginChild("##NinjaPriceIgnoredCellsGrid", new Vector2(contentRegionAvail.X, contentRegionAvail.Y), ImGuiChildFlags.Border,
-            ImGuiWindowFlags.NoScrollWithMouse);
+        ImGui.BeginChild("##NinjaPriceIgnoredCellsGrid", new Vector2(contentRegionAvail.X, contentRegionAvail.Y));
 
         for (var row = 0; row < IgnoredCellRowCount; row++)
         {

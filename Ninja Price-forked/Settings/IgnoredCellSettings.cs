@@ -2,7 +2,7 @@ using ExileCore.Shared.Attributes;
 using ExileCore.Shared.Nodes;
 using Newtonsoft.Json;
 
-namespace Ninja_Price.Settings;
+namespace Ninja_Price_Forked.Settings;
 
 [Submenu(CollapsedByDefault = true)]
 public class IgnoredCellSettings

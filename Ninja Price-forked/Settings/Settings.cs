@@ -4,14 +4,14 @@ using ExileCore.Shared.Interfaces;
 using ExileCore.Shared.Nodes;
 using ImGuiNET;
 using Newtonsoft.Json;
-using Ninja_Price.Enums;
+using Ninja_Price_Forked.Enums;
 using SharpDX;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 
-namespace Ninja_Price.Settings;
+namespace Ninja_Price_Forked.Settings;
 
 public class Settings : ISettings
 {
@@ -84,6 +84,7 @@ public class LeagueSpecificSettings
     public ToggleNode ShowPurchaseWindowPrices { get; set; } = new(true);
     public ToggleNode ShowSanctumRewardPrices { get; set; } = new(true);
     public ToggleNode ShowVillageUniqueDisenchantValueWindow { get; set; } = new(false);
+    public ToggleNode ShowSkillGemCorruptWindow { get; set; } = new(false);
 
     public ToggleNode ShowExpeditionVendorOverlay { get; set; } = new(false);
     public ToggleNode ShowUltimatumOverlay { get; set; } = new(true);
@@ -118,13 +119,15 @@ public class TradeWindowSettings
 public class HoveredItemSettings
 {
     public ToggleNode Show { get; set; } = new(true);
+    public RangeNode<int> OffsetX { get; set; } = new(0, 0, 256);
+    public RangeNode<int> OffsetY { get; set; } = new(0, 0, 256);
     public HoveredItemSparklineSettings Sparkline { get; set; } = new();
 }
 
 [Submenu(CollapsedByDefault = true)]
 public class HoveredItemSparklineSettings
 {
-    public ToggleNode Enabled { get; set; } = new(true);
+    public ToggleNode Enabled { get; set; } = new(false);
     public RangeNode<int> Width { get; set; } = new(54, 20, 180);
     public RangeNode<int> Height { get; set; } = new(16, 8, 48);
     public RangeNode<float> BorderThickness { get; set; } = new(1f, 0.5f, 4f);
@@ -160,6 +163,9 @@ public class UniqueIdentificationSettings
     public ToggleNode OnlyShowRealUniqueNameForValuableUniques { get; set; } = new(false);
     public ToggleNode ShowWarningTextForUnknownUniques { get; set; } = new(true);
     public RangeNode<float> UniqueLabelSize { get; set; } = new(0.8f, 0.1f, 1);
+
+    [Menu(null, "Draw the name background over the whole item label instead of only behind the text")]
+    public ToggleNode BackgroundCoversWholeLabel { get; set; } = new(false);
     public ColorNode UniqueItemNameTextColor { get; set; } = new(Color.Black);
     public ColorNode UniqueItemNameBackgroundColor { get; set; } = new(new Color(175, 96, 37));
     public ColorNode ValuableUniqueItemNameTextColor { get; set; } = new(new Color(175, 96, 37));

@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace Ninja_Price.API.PoeNinja;
+namespace Ninja_Price_Forked.API.PoeNinja;
 
 public class Beasts
 {

@@ -1,11 +1,11 @@
 using Newtonsoft.Json;
-using Ninja_Price.API.PoeNinja;
+using Ninja_Price_Forked.API.PoeNinja;
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Ninja_Price.Main;
+namespace Ninja_Price_Forked.Main;
 
 public partial class Main
 {
@@ -25,12 +25,15 @@ public partial class Main
     private const string AllflameEmbersUrl = "https://poe.ninja/poe1/api/economy/exchange/current/overview?league={0}&type=AllflameEmber";
     private const string DjinnCoinsUrl = "https://poe.ninja/poe1/api/economy/exchange/current/overview?league={0}&type=DjinnCoin";
     private const string AstrolabeUrl = "https://poe.ninja/poe1/api/economy/exchange/current/overview?league={0}&type=Astrolabe";
+    private const string DucatUrl = "https://poe.ninja/poe1/api/economy/exchange/current/overview?league={0}&type=Ducat";
+    private const string ThreadsUrl = "https://poe.ninja/poe1/api/economy/exchange/current/overview?league={0}&type=Thread";
 
     private const string InvitationUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=Invitation";
     private const string UniqueAccessoriesUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=UniqueAccessory";
     private const string UniqueArmoursUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=UniqueArmour";
     private const string UniqueFlasksUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=UniqueFlask";
     private const string UniqueJewelsUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=UniqueJewel";
+    private const string ForbiddenJewelsUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=ForbiddenJewel";
     private const string UniqueMapsUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=UniqueMap";
     private const string UniqueWeaponsUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=UniqueWeapon";
     private const string WhiteMapsUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=Map";
@@ -44,6 +47,7 @@ public partial class Main
     private const string BeastUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=Beast";
     private const string VialUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=Vial";
     private const string BaseTypeUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=BaseType";
+    private const string ViscerasUrl = "https://poe.ninja/poe1/api/economy/stash/current/item/overview?league={0}&type=Viscera";
 
     private class LeagueMetadata
     {
@@ -90,6 +94,8 @@ public partial class Main
                 await LoadData<CurrencyOverviewData.RootObject>("AllflameEmbers2.json", AllflameEmbersUrl, league, tryWebFirst, t => newData.AllflameEmbers = t);
                 await LoadData<CurrencyOverviewData.RootObject>("DjinnCoinsUrl2.json", DjinnCoinsUrl, league, tryWebFirst, t => newData.DjinnCoins = t);
                 await LoadData<CurrencyOverviewData.RootObject>("Astrolabe2.json", AstrolabeUrl, league, tryWebFirst, t => newData.Astrolabe = t);
+                await LoadData<CurrencyOverviewData.RootObject>("Ducats.json", DucatUrl, league, tryWebFirst, t => newData.Ducats = t);
+                await LoadData<CurrencyOverviewData.RootObject>("Threads.json", ThreadsUrl, league, tryWebFirst, t => newData.Threads = t);
 
                 await LoadData<Invitations.RootObject>("Invitations.json", InvitationUrl, league, tryWebFirst, t => newData.Invitations = t);
                 await LoadData<Vials.RootObject>("Vials.json", VialUrl, league, tryWebFirst, t => newData.Vials = t);
@@ -102,6 +108,7 @@ public partial class Main
                 await LoadData<UniqueArmours.RootObject>("UniqueArmours.json", UniqueArmoursUrl, league, tryWebFirst, t => newData.UniqueArmours = t);
                 await LoadData<UniqueFlasks.RootObject>("UniqueFlasks.json", UniqueFlasksUrl, league, tryWebFirst, t => newData.UniqueFlasks = t);
                 await LoadData<UniqueJewels.RootObject>("UniqueJewels.json", UniqueJewelsUrl, league, tryWebFirst, t => newData.UniqueJewels = t);
+                await LoadData<ForbiddenJewels.RootObject>("ForbiddenJewels.json", ForbiddenJewelsUrl, league, tryWebFirst, t => newData.ForbiddenJewels = t);
                 await LoadData<UniqueMaps.RootObject>("UniqueMaps.json", UniqueMapsUrl, league, tryWebFirst, t => newData.UniqueMaps = t);
                 await LoadData<UniqueWeapons.RootObject>("UniqueWeapons.json", UniqueWeaponsUrl, league, tryWebFirst, t => newData.UniqueWeapons = t);
                 await LoadData<WhiteMaps.RootObject>("WhiteMaps.json", WhiteMapsUrl, league, tryWebFirst, t => newData.WhiteMaps = t);
@@ -109,6 +116,7 @@ public partial class Main
                 await LoadData<BlightRavagedMaps.RootObject>("BlightRavagedMaps.json", BlightRavagedMapsUrl, league, tryWebFirst, t => newData.BlightRavagedMaps = t);
                 await LoadData<ValdoMaps.RootObject>("ValdoMaps.json", ValdoMapsUrl, league, tryWebFirst, t => newData.ValdoMaps = t);
                 await LoadData<BaseTypes.RootObject>("BaseTypes.json", BaseTypeUrl, league, tryWebFirst, t => newData.BaseType = t);
+                await LoadData<Visceras.RootObject>("Visceras.json", ViscerasUrl, league, tryWebFirst, t => newData.Visceras = t);
 
                 new FileInfo(metadataPath).Directory?.Create();
                 await File.WriteAllTextAsync(metadataPath, JsonConvert.SerializeObject(new LeagueMetadata { LastLoadTime = DateTime.UtcNow }));

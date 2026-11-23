@@ -1,7 +1,7 @@
-using Ninja_Price.Enums;
+using Ninja_Price_Forked.Enums;
 using System.Collections.Generic;
 
-namespace Ninja_Price.Main;
+namespace Ninja_Price_Forked.Main;
 
 public partial class Main
 {

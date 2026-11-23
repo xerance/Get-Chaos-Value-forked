@@ -7,8 +7,8 @@ using ExileCore.Shared.Cache;
 using ExileCore.Shared.Enums;
 using ExileCore.Shared.Helpers;
 using ImGuiNET;
-using Ninja_Price.Enums;
-using Ninja_Price.Settings;
+using Ninja_Price_Forked.Enums;
+using Ninja_Price_Forked.Settings;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -18,11 +18,11 @@ using System.Linq;
 using System.Net;
 using System.Numerics;
 using System.Text.RegularExpressions;
-using static Ninja_Price.Enums.HaggleTypes.HaggleType;
+using static Ninja_Price_Forked.Enums.HaggleTypes.HaggleType;
 using Color = SharpDX.Color;
 using RectangleF = SharpDX.RectangleF;
 
-namespace Ninja_Price.Main;
+namespace Ninja_Price_Forked.Main;
 
 public partial class Main
 {
@@ -55,6 +55,12 @@ public partial class Main
         _groundItems = new FrameCache<List<ItemOnGround>>(CacheUtils.RememberLastValue(GetItemsOnGround, new List<ItemOnGround>()));
         _disenchantCache = new TimeCache<List<VillageUniqueDisenchantValue>>(() => GameController.Files.VillageUniqueDisenchantValues.EntriesList, 1000);
     }
+
+    private const float DustBaseMultiplier = 125f; // 100 (3.25 base) x 1.25 (3.26+ scalar)
+
+    private float? ComputeDust(float? baseValue) =>
+        baseValue * DustBaseMultiplier * (Math.Clamp(HoveredItem.ItemLevel, 65, 84) - 64) * (1 + HoveredItem.Quality / 50f)
+        * (1 + 0.5f * HoveredItem.CorruptionImplicitCount);
 
     private List<ItemOnGround> GetItemsOnGround(List<ItemOnGround> previousValue)
     {
@@ -261,11 +267,13 @@ public partial class Main
         ProcessTradeWindow();
         ProcessDivineFontRewards();
         DrawVillageUniqueWindow();
+        DrawSkillGemCorruptWindow();
         ShowSanctumOfferPrices();
         ProcessUltimatumPanel();
         ProcessHoveredItem();
         VisibleInventoryValue();
         ProcessExchangeCurrencyPicker();
+        ProcessAncestorFightRewards();
 
         if (StashPanel.IsVisible)
         {
@@ -277,9 +285,18 @@ public partial class Main
                 Settings.PriceOverlaySettings.DoNotDrawWhileAnItemIsHovered && HoveredItem != null ||
                 !layout.Enabled) return;
 
+            var isDivinationTab = tabType == InventoryType.DivinationStash;
+            RectangleF? stashViewport = isDivinationTab
+                ? StashPanel.VisibleStash?.GetChildAtIndex(0)?.GetClientRect()
+                : null;
             foreach (var customItem in ItemsToDrawList.Where(customItem => customItem.ItemType != ItemTypes.None))
             {
-                PriceBoxOverItem(customItem, null, null, null, layout);
+                // Each div card sits in a square cell that's wider than the card, so put its price on
+                // the card picture, which is the cell's first child.
+                var itemBox = isDivinationTab && customItem.Element.GetChildAtIndex(0) is { IsVisible: true } card
+                    ? card.GetClientRect()
+                    : (RectangleF?)null;
+                PriceBoxOverItem(customItem, stashViewport, null, null, layout, itemBox);
             }
         }
         else if (
@@ -401,6 +418,7 @@ public partial class Main
             case ItemTypes.Currency:
             case ItemTypes.Essence:
             case ItemTypes.Fragment:
+            case ItemTypes.Thread:
             case ItemTypes.Scarab:
             case ItemTypes.Resonator:
             case ItemTypes.Fossil:
@@ -418,6 +436,7 @@ public partial class Main
             case ItemTypes.AllflameEmber:
             case ItemTypes.DjinnCoin:
             case ItemTypes.Astrolabe:
+            case ItemTypes.Ducat:
                 if (priceInDivines >= 0.1)
                 {
                     var priceInDivinessPerOne = priceInDivines / HoveredItem.CurrencyInfo.StackSize;
@@ -433,11 +452,12 @@ public partial class Main
             case ItemTypes.UniqueJewel:
             case ItemTypes.UniqueMap:
             case ItemTypes.UniqueWeapon:
+            case ItemTypes.Viscera:
                 if (HoveredItem.UniqueNameCandidates.Any())
                 {
                     AddText(HoveredItem.UniqueNameCandidates.Count == 1
-                        ? $"\nIdentified as: {HoveredItem.UniqueNameCandidates.First()} (disenchants for {_disenchantCache.Value.FirstOrDefault(y => y.UniqueName?.Text == HoveredItem.UniqueNameCandidates.First())?.Value * 2000})"
-                        : $"\nIdentified as one of:\n{string.Join('\n', HoveredItem.UniqueNameCandidates.Select(x => $"{x} (disenchants for {_disenchantCache.Value.FirstOrDefault(y => y.UniqueName?.Text == x)?.Value * 2000})"))}");
+                        ? $"\nIdentified as: {HoveredItem.UniqueNameCandidates.First()} (disenchants for {ComputeDust(DisenchantData.Where(y => y.UniqueName == HoveredItem.UniqueNameCandidates.First()).Select(y => (float?)y.Value).FirstOrDefault())})"
+                        : $"\nIdentified as one of:\n{string.Join('\n', HoveredItem.UniqueNameCandidates.Select(x => $"{x} (disenchants for {ComputeDust(DisenchantData.Where(y => y.UniqueName == x).Select(y => (float?)y.Value).FirstOrDefault())})"))}");
                 }
 
                 AddSection();
@@ -456,7 +476,7 @@ public partial class Main
 
                 if (!string.IsNullOrEmpty(HoveredItem.UniqueName))
                 {
-                    AddText($"\nDisenchants for {_disenchantCache.Value.FirstOrDefault(x => x.UniqueName?.Text == HoveredItem.UniqueName)?.Value * 2000}");
+                    AddText($"\nDisenchants for {ComputeDust(DisenchantData.Where(x => x.UniqueName == HoveredItem.UniqueName).Select(x => (float?)x.Value).FirstOrDefault())}");
                 }
 
                 break;
@@ -503,10 +523,22 @@ public partial class Main
         var nonEmptySections = textSections.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).ToList();
         if (nonEmptySections.Count > 0 || showChangeLine)
         {
+            if (Settings.HoveredItemSettings.OffsetX.Value != 0 || Settings.HoveredItemSettings.OffsetY.Value != 0)
+            {
+                var mousePos = ImGui.GetMousePos();
+                mousePos.X += Settings.HoveredItemSettings.OffsetX;
+                mousePos.Y += Settings.HoveredItemSettings.OffsetY;
+                ImGui.SetNextWindowPos(mousePos);
+            }
+            
             ImGui.BeginTooltip();
-            var hoverTextColor = priceInChaos >= Settings.VisualPriceSettings.ExtraValuableColorThreshold.Value ? Settings.VisualPriceSettings.ExtraValuableColor :
-                priceInChaos >= Settings.VisualPriceSettings.ValuableColorThreshold.Value ? Settings.VisualPriceSettings.ValuableColor :
-                priceInChaos >= Settings.VisualPriceSettings.SemiValuableColorThreshold.Value ? Settings.VisualPriceSettings.SemiValuableColor : null;
+            var hoverTextColor = priceInChaos >= Settings.VisualPriceSettings.ExtraValuableColorThreshold.Value 
+                ? Settings.VisualPriceSettings.ExtraValuableColor 
+                : priceInChaos >= Settings.VisualPriceSettings.ValuableColorThreshold.Value 
+                    ? Settings.VisualPriceSettings.ValuableColor
+                    : priceInChaos >= Settings.VisualPriceSettings.SemiValuableColorThreshold.Value 
+                        ? Settings.VisualPriceSettings.SemiValuableColor 
+                        : null;
 
             if (hoverTextColor != null)
             {
@@ -564,7 +596,7 @@ public partial class Main
         var downColor = ImGui.GetColorU32(sparklineSettings.DownTrendColor.Value.ToImgui());
 
         var chartMax = chartOrigin + new Vector2(chartWidth, chartHeight);
-        drawList.AddRect(chartOrigin, chartMax, axisColor, 0f, ImDrawFlags.None, axisThickness);
+        drawList.AddRect(chartOrigin, chartMax, axisColor, 0f, axisThickness);
 
         var innerMin = chartOrigin + new Vector2(chartPadding, chartPadding);
         var innerMax = chartMax - new Vector2(chartPadding, chartPadding);
@@ -734,7 +766,7 @@ public partial class Main
         return (Settings.VisualPriceSettings.FontColor, Settings.VisualPriceSettings.BackgroundColor);
     }
 
-    private void PriceBoxOverItem(CustomItem item, RectangleF? containerBox, Color? textColor = null, Color? backgroundColor = null, StashPriceOverlayLayout layout = null)
+    private void PriceBoxOverItem(CustomItem item, RectangleF? containerBox, Color? textColor = null, Color? backgroundColor = null, StashPriceOverlayLayout layout = null, RectangleF? itemBox = null)
     {
         var itemValue = item.PriceData.MinChaosValue;
 
@@ -742,7 +774,7 @@ public partial class Main
 
         layout ??= new StashPriceOverlayLayout();
 
-        var box = item.Element.GetClientRect();
+        var box = itemBox ?? item.Element.GetClientRect();
         var h = Math.Abs(Settings.PriceOverlaySettings.BoxHeight.Value);
 
         const float gap = 2f;
@@ -758,7 +790,7 @@ public partial class Main
         var drawBox = new RectangleF(box.X, barTopY, box.Width, h);
 
         (containerBox ?? default).Contains(ref drawBox, out var contains);
-        if (containerBox != null && !contains || drawBox.Intersects(HoveredItem?.Element?.Tooltip?.GetClientRectCache ?? default)) return;
+        if (containerBox != null && !contains || (HoveredItemTooltipRect?.Intersects(drawBox) ?? false)) return;
         var overlayColors = GetOverlayColors(item.PriceData.MinChaosValue);
         Graphics.DrawBox(drawBox, backgroundColor ?? overlayColors.BackgroundColor);
         var textPosition = new Vector2(drawBox.Center.X, drawBox.Center.Y - ImGui.GetTextLineHeight() / 2);
@@ -927,6 +959,24 @@ public partial class Main
     private float _minDisenchantValue = 0;
     private float _maxDisenchantCost = 1000;
     private readonly CachedValue<List<VillageUniqueDisenchantValue>> _disenchantCache;
+    private static List<(string UniqueName, float Value)> _persistedDisenchantData;
+    private static List<VillageUniqueDisenchantValue> _lastLiveData;
+
+    private List<(string UniqueName, float Value)> DisenchantData
+    {
+        get
+        {
+            var live = _disenchantCache.Value;
+            if (live?.Count > 0 && live != _lastLiveData)
+            {
+                _lastLiveData = live;
+                _persistedDisenchantData = live
+                    .Select(x => (x.UniqueName?.Text?.Replace('\x2019', '\x27') ?? "", x.Value))
+                    .ToList();
+            }
+            return _persistedDisenchantData ?? [];
+        }
+    }
 
     private void DrawVillageUniqueWindow()
     {
@@ -955,12 +1005,12 @@ public partial class Main
                         .Select(x => x.Replace('\x2019', '\x27'))
                         .ToHashSet();
 
-                    var unfilteredItems = _disenchantCache.Value.ExceptBy(excludedUniques, x => x.UniqueName?.Text.Replace('\x2019', '\x27') ?? "")
+                    var unfilteredItems = DisenchantData.ExceptBy(excludedUniques, x => x.UniqueName)
                         .Select(x => (
-                            Name: x.UniqueName?.Text.Replace('\x2019', '\x27') ?? "",
-                            Cost: uniquePrices.GetValueOrDefault(x.UniqueName?.Text ?? ""),
-                            Value: x.Value * 2000,
-                            ValuePerChaos: uniquePrices.TryGetValue(x.UniqueName?.Text.Replace('\x2019', '\x27') ?? "", out var price) ? x.Value * 2000 / Math.Max(1, price) : 0))
+                            Name: x.UniqueName,
+                            Cost: uniquePrices.GetValueOrDefault(x.UniqueName),
+                            Value: x.Value * 2500,
+                            ValuePerChaos: uniquePrices.TryGetValue(x.UniqueName, out var price) ? x.Value * 2500 / Math.Max(1, price) : 0))
                         .ToList();
                     var items = unfilteredItems.Any()
                         ? unfilteredItems
@@ -1028,6 +1078,117 @@ public partial class Main
         }
     }
 
+    private string _gemFilter = "";
+    private float _minGemDivinePrice = 0.5f;
+    private int _minGemListings = 10;
+
+    private void DrawSkillGemCorruptWindow()
+    {
+        if (Settings.LeagueSpecificSettings.ShowSkillGemCorruptWindow)
+        {
+            var show = true;
+            if (ImGui.Begin("Skill Gem Corruption Prices", ref show))
+            {
+                ImGui.SliderFloat("Minimum corrupted sale value", ref _minGemDivinePrice, 0, 100);
+                ImGui.SliderInt("Minimum corrupted listings", ref _minGemListings, 0, 100);
+                ImGui.InputTextWithHint("##filter", "Filter", ref _gemFilter, 200);
+                if (ImGui.BeginTable("Skill Gem Corruption Prices", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.Sortable | ImGuiTableFlags.SizingFixedFit))
+                {
+                    ImGui.TableSetupColumn("Name");
+                    ImGui.TableSetupColumn("Price (uncorrupted)");
+                    ImGui.TableSetupColumn("Price (corrupted)");
+                    ImGui.TableSetupColumn("Price (corrupted failed)");
+                    ImGui.TableSetupColumn("Profit Ratio", ImGuiTableColumnFlags.DefaultSort | ImGuiTableColumnFlags.PreferSortDescending);
+                    ImGui.TableSetupColumn("Listings");
+                    ImGui.TableHeadersRow();
+
+                    // uncorrupted = highest level gem with no corruption and 20 quality
+                    // corrupted = highest level gem with corruption and 23 quality
+                    // corrupted failed = same gem level and quality as uncorrupted, but with corruption
+                    var gemGroups = (CollectedData.SkillGems.Lines ?? [])
+                        .Where(x => string.IsNullOrEmpty(_gemFilter) || x.Name.Contains(_gemFilter, StringComparison.InvariantCultureIgnoreCase))
+                        .GroupBy(x => x.Name)
+                        .Where(x => x.Any(y => y.Corrupted && (y.DivineValue ?? 0) >= _minGemDivinePrice))
+                        .ToDictionary(x => x.Key, x => x.ToList());
+                    var gems = gemGroups.Select(gemGroup =>
+                        {
+                            var uncorruptedGem = gemGroup.Value
+                                .Where(x => !x.Corrupted)
+                                .OrderByDescending(x => x.GemLevel)
+                                .ThenByDescending(x => x.GemQuality)
+                                .FirstOrDefault();
+                            var corruptedGem = gemGroup.Value
+                                .Where(x => x.Corrupted)
+                                .OrderByDescending(x => x.GemLevel)
+                                .ThenByDescending(x => x.GemQuality)
+                                .FirstOrDefault();
+                            var corruptedFailedGem = gemGroup.Value
+                                .Where(x => x.Corrupted)
+                                .FirstOrDefault(x => x.GemLevel == uncorruptedGem?.GemLevel && x.GemQuality == uncorruptedGem?.GemQuality);
+                            var uncorruptedPrice = uncorruptedGem?.DivineValue ?? 0;
+                            var corruptedPrice = corruptedGem?.DivineValue ?? 0;
+                            return (
+                                Name: gemGroup.Key,
+                                UncorruptedPrice: uncorruptedPrice,
+                                CorruptedPrice: corruptedPrice,
+                                CorruptedFailedPrice: corruptedFailedGem?.DivineValue ?? 0,
+                                Listings: corruptedGem?.ListingCount ?? 0,
+                                Ratio: uncorruptedPrice > 0 ? corruptedPrice / uncorruptedPrice : 0.0);
+                        })
+                        .Where(x => x.Listings >= _minGemListings)
+                        .ToList();
+                    var sortSpecs = ImGui.TableGetSortSpecs();
+                    if (sortSpecs.SpecsCount > 0)
+                    {
+                        object SortSelector((string Name, double UncorruptedPrice, double CorruptedPrice, double CorruptedFailedPrice, int Listings, double Ratio) x) =>
+                            sortSpecs.Specs.ColumnIndex switch
+                            {
+                                0 => x.Name,
+                                1 => x.UncorruptedPrice,
+                                2 => x.CorruptedPrice,
+                                3 => x.CorruptedFailedPrice,
+                                4 => x.Ratio,
+                                5 => x.Listings,
+                                _ => 0,
+                            };
+
+                        if (sortSpecs.Specs.SortDirection == ImGuiSortDirection.Ascending)
+                        {
+                            gems = gems.OrderBy(SortSelector).ToList();
+                        }
+                        else if (sortSpecs.Specs.SortDirection == ImGuiSortDirection.Descending)
+                        {
+                            gems = gems.OrderByDescending(SortSelector).ToList();
+                        }
+                    }
+
+                    foreach (var gem in gems)
+                    {
+                        ImGui.TableNextRow();
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted(gem.Name);
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted($"{gem.UncorruptedPrice:0.##}");
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted($"{gem.CorruptedPrice:0.##}");
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted($"{gem.CorruptedFailedPrice:0.##}");
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted($"{gem.Ratio:0.##}");
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted($"{gem.Listings}");
+                    }
+
+                    ImGui.EndTable();
+                }
+
+                ImGui.End();
+            }
+
+            Settings.LeagueSpecificSettings.ShowSkillGemCorruptWindow.Value = show;
+        }
+    }
+
     private static readonly Regex SanctumOfferParse = new(
         @"(Receive)\s((?'currencysize'(\d+))x(?'currencyname'.*))\s(right now|at the end of the next Floor|at the end of the Floor|on completing the Sanctum)$",
         RegexOptions.Compiled);
@@ -1072,13 +1233,49 @@ public partial class Main
         }
     }
 
+    private void ProcessAncestorFightRewards()
+    {
+        if ((!Settings.PriceOverlaySettings.DoNotDrawWhileAnItemIsHovered || HoveredItem == null) &&
+            GameController.IngameState.IngameUi.AncestorFightSelectionWindow is { IsVisible: true, Options: { Count: > 0 } options } window)
+        {
+            var containerBounds = window.TableContainer.GetClientRectCache;
+            foreach (var x in options)
+            {
+                try
+                {
+                    var customItem = new CustomItem(x.Reward, x.RewardElement);
+                    GetValue(customItem);
+                    PriceBoxOverItem(customItem, containerBounds);
+                }
+                catch (Exception ex)
+                {
+                    LogError(ex.ToString());
+                }
+            }
+        }
+    }
+
     private void ProcessItemsOnGround()
     {
         if (!Settings.GroundItemSettings.PriceItemsOnGround && !Settings.UniqueIdentificationSettings.ShowRealUniqueNameOnGround && !Settings.GroundItemSettings.PriceHeistRewards) return;
+        if (GameController.IngameState.IngameUi.FullscreenPanels.Any(x => x.IsVisible)) return;
         //this window allows us to change the size of the text we draw to the background list
         //yeah, it's weird
         ImGui.Begin("lmao",
             ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.NoInputs | ImGuiWindowFlags.NoFocusOnAppearing | ImGuiWindowFlags.NoNav);
+        // finally so a throw while drawing can't skip End() - that left imgui asserting Missing End() on "lmao"
+        try
+        {
+            DrawGroundItems();
+        }
+        finally
+        {
+            ImGui.End();
+        }
+    }
+
+    private void DrawGroundItems()
+    {
         var drawList = ImGui.GetBackgroundDrawList();
         var tooltipRect = HoveredItem?.Element.AsObject<HoverItemIcon>()?.Tooltip?.GetClientRect() ?? new RectangleF(0, 0, 0, 0);
         var leftPanelRect = GameController.IngameState.IngameUi.OpenLeftPanel.Address != 0
@@ -1165,13 +1362,22 @@ public partial class Main
 
                             void DrawOnItemLabel(float scale, string text, Color backgroundColor, Color textColor)
                             {
-                                ImGui.SetWindowFontScale(scale);
+                                // A label whose rect reads empty or as garbage (zero height while the game changes it) gives a
+                                // negative or non-finite scale, and ImGui aborts the whole HUD on a negative font size.
+                                if (!(scale > 0) || !float.IsFinite(scale))
+                                {
+                                    return;
+                                }
+
+                                ImGui.PushFont(null, ImGui.GetStyle().FontSizeBase * scale);
                                 var newTextSize = ImGui.CalcTextSize(text);
                                 var textPosition = box.Center.ToVector2Num() - newTextSize / 2;
-                                var rectPosition = new Vector2(textPosition.X, box.Top + 1);
-                                drawList.AddRectFilled(rectPosition, rectPosition + new Vector2(newTextSize.X, box.Height - 2), backgroundColor.ToImgui());
+                                var (backgroundLeft, backgroundRight) = Settings.UniqueIdentificationSettings.BackgroundCoversWholeLabel
+                                    ? (box.Left + 1, box.Right - 1)
+                                    : (textPosition.X, textPosition.X + newTextSize.X);
+                                drawList.AddRectFilled(new Vector2(backgroundLeft, box.Top + 1), new Vector2(backgroundRight, box.Bottom - 1), backgroundColor.ToImgui());
                                 drawList.AddText(textPosition, textColor.ToImgui(), text);
-                                ImGui.SetWindowFontScale(1);
+                                ImGui.PopFont();
                             }
 
                             if (item.UniqueNameCandidates.Any())
@@ -1230,8 +1436,6 @@ public partial class Main
             }
                 
         }
-        
-        ImGui.End();
     }
 
     private void ProcessUltimatumPanel()

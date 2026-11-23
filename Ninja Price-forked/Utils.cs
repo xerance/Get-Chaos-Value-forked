@@ -1,7 +1,7 @@
 ﻿using System.Net.Http;
 using System.Threading.Tasks;
 
-namespace Ninja_Price;
+namespace Ninja_Price_Forked;
 
 public static class Utils
 {
