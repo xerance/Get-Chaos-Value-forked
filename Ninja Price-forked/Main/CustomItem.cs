@@ -28,6 +28,9 @@ public class CustomItem
     public readonly string ClassName;
     public int ScourgeTier;
     public bool IsIdentified;
+    // Diagnostics, visible in the hovered-item inspector
+    public string ConstructionError;
+    public string MapTypeError;
     public Influence InfluenceFlags;
     public bool IsCorrupted;
     public int CorruptionImplicitCount;
@@ -268,28 +271,40 @@ public class CustomItem
             {
                 MapInfo.MapType = MapTypes.None;
 
-                foreach (var itemList in itemEntity.GetComponent<Mods>().ItemMods)
+                // A throw here used to abort the constructor before ComputeType ran, leaving the
+                // item classified as ItemTypes.None and therefore unpriced.
+                try
                 {
-                    if (itemList.RawName.Contains("Shaped "))
+                    foreach (var itemList in itemEntity.GetComponent<Mods>()?.ItemMods ?? [])
                     {
-                        MapInfo.MapType = MapTypes.Shaped;
-                        break;
+                        var rawName = itemList?.RawName;
+                        if (string.IsNullOrEmpty(rawName)) continue;
+
+                        if (rawName.Contains("Shaped "))
+                        {
+                            MapInfo.MapType = MapTypes.Shaped;
+                            break;
+                        }
+                        else if (rawName.Contains("Elder "))
+                        {
+                            MapInfo.MapType = MapTypes.Elder;
+                            break;
+                        }
+                        else if (rawName == "InfectedMap")
+                        {
+                            MapInfo.MapType = MapTypes.Blighted;
+                            break;
+                        }
+                        else if (rawName == "UberInfectedMap__")
+                        {
+                            MapInfo.MapType = MapTypes.BlightRavaged;
+                            break;
+                        }
                     }
-                    else if (itemList.RawName.Contains("Elder "))
-                    {
-                        MapInfo.MapType = MapTypes.Elder;
-                        break;
-                    }
-                    else if (itemList.RawName == "InfectedMap")
-                    {
-                        MapInfo.MapType = MapTypes.Blighted;
-                        break;
-                    }
-                    else if (itemList.RawName == "UberInfectedMap__")
-                    {
-                        MapInfo.MapType = MapTypes.BlightRavaged;
-                        break;
-                    }
+                }
+                catch (Exception mapTypeException)
+                {
+                    MapTypeError = mapTypeException.Message;
                 }
 
                 if (BaseName == "Valdo Map") MapInfo.MapType = MapTypes.Valdo;
@@ -317,6 +332,7 @@ public class CustomItem
         }
         catch (Exception exception)
         {
+            ConstructionError = exception.ToString();
             if (Core.Settings.DebugSettings.EnableDebugLogging)
                 Core.LogError($"Ninja Pricer.CustomItem Error:\n{exception}");
         }
@@ -334,7 +350,7 @@ public class CustomItem
     }
 
     // The map item class itself - deliberately not "MiscMapItem" or "MapFragment"
-    private static bool IsMapClass(string className) => className is "Map" or "Maps";
+    private static bool IsMapClass(string className) => className is "Map" or "Maps" or "MapKey";
 
     private void ComputeType(Entity itemEntity)
     {
