@@ -64,3 +64,12 @@ player inventory only.
 
 The settings window also shows what the last inventory pass saw ("12 item(s), 3 in ignored cells"),
 which is the quickest way to tell whether the grid is being applied.
+
+## Fork change: tier-aware map pricing
+
+poe.ninja lists generic maps with the tier in the name (`Map (Tier 16)`,
+`Al-Hezmin Map (Tier 16)`), while named atlas maps keep their own name
+(`Vaal Temple Map`). The in-game base name never carries a tier, so upstream's
+exact name match found nothing for generic maps and they were priced at 0 (and
+therefore not drawn at all). The lookup now tries `<name> (Tier N)` first and
+falls back to the plain name.

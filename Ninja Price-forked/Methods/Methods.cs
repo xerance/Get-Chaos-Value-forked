@@ -965,8 +965,18 @@ public partial class Main
 
                                 #endregion
 
-                                var normalMapSearch = CollectedData.WhiteMaps.Lines?.Find(x =>
-                                    x.Name == normalMapBaseName);
+                                // poe.ninja lists generic maps with the tier baked into the name
+                                // ("Map (Tier 16)", "Al-Hezmin Map (Tier 16)") while named atlas maps keep
+                                // their own name ("Vaal Temple Map"). The in-game base name never carries a
+                                // tier, so try the tiered name first and fall back to the plain one.
+                                var normalMapNameCandidates = new List<string>();
+                                if (item.MapInfo.MapTier > 0 && !normalMapBaseName.Contains("(Tier "))
+                                    normalMapNameCandidates.Add($"{normalMapBaseName} (Tier {item.MapInfo.MapTier})");
+                                normalMapNameCandidates.Add(normalMapBaseName);
+
+                                var normalMapSearch = normalMapNameCandidates
+                                    .Select(name => CollectedData.WhiteMaps.Lines?.Find(x => x.Name == name))
+                                    .FirstOrDefault(x => x != null);
 
                                 if (normalMapSearch != null)
                                 {
