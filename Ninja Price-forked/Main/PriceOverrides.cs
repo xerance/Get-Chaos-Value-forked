@@ -208,7 +208,7 @@ public partial class Main
 
         ImGui.Text("Manual Price Overrides");
         ImGui.Text($"Status: {_priceOverrideStatus}{(_priceOverridesDirty ? "  (unsaved changes)" : "")}");
-        ImGui.Text("Key = poe.ninja DetailsId, unique name or base name. Value is in chaos.");
+        ImGui.Text("Key = poe.ninja DetailsId, unique name or base name. Value is chaos per single item.");
 
         if (ImGui.Button("Add Row"))
         {
@@ -237,18 +237,26 @@ public partial class Main
                 ? lastHovered.PriceData.DetailsId
                 : lastHovered.BaseName;
 
+        // Overrides are stored per item and multiplied by the stack, so a hovered stack of 20
+        // GCPs has to be divided back down to one before it goes in the editor.
+        var lastHoveredUnitValue = lastHovered == null
+            ? 0
+            : lastHovered.PriceData.MinChaosValue / Math.Max(1, lastHovered.CurrencyInfo.StackSize);
+
         ImGui.SameLine();
         if (ImGui.Button("Add Last Hovered Item") && !string.IsNullOrWhiteSpace(lastHoveredKey))
         {
             _priceOverrideRows.Add(new PriceOverrideRow
             {
                 Key = lastHoveredKey,
-                Value = lastHovered.PriceData.MinChaosValue.ToString("0.##", CultureInfo.InvariantCulture),
+                Value = lastHoveredUnitValue.ToString("0.##", CultureInfo.InvariantCulture),
             });
             _priceOverridesDirty = true;
         }
 
-        ImGui.Text($"Last hovered: {(string.IsNullOrWhiteSpace(lastHoveredKey) ? "nothing yet" : lastHoveredKey)}");
+        ImGui.Text(string.IsNullOrWhiteSpace(lastHoveredKey)
+            ? "Last hovered: nothing yet"
+            : $"Last hovered: {lastHoveredKey} at {lastHoveredUnitValue.ToString("0.##", CultureInfo.InvariantCulture)}c each");
 
         ImGui.Separator();
         ImGui.BeginChild("##NinjaPricePriceOverrideRows", ImGui.GetContentRegionAvail());

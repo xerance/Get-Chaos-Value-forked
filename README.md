@@ -98,7 +98,8 @@ stack size.
 
 The file is created on first launch, but you do not have to touch it: the settings panel
 has a row editor. **Add Row** appends a blank pair, **Add Last Hovered Item** fills one in
-from the item you hovered most recently (its DetailsId and current price), **Remove** drops
+from the item you hovered most recently (its DetailsId and its price for a single item, so a
+hovered stack of 20 Gemcutter's Prisms fills in the price of one), **Remove** drops
 a row, **Save** writes the file and re-applies it, and **Discard Changes** re-reads from
 disk. Comments above the first entry are preserved when saving; comments below it are not.
 
