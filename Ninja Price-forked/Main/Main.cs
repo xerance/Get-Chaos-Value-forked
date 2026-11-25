@@ -50,6 +50,8 @@ public partial class Main : BaseSettingsPlugin<Settings.Settings>
         Settings.DataSourceSettings.SyncCurrentLeague.OnValueChanged += (_, _) => SyncCurrentLeague();
         Settings.IgnoredCellSettings.ReloadHighlightedItemsCells.OnPressed += () => ReloadHighlightedItemsIgnoredCells(true);
         ReloadHighlightedItemsIgnoredCells(true);
+        Settings.PriceOverrideSettings.ReloadOverrides.OnPressed += () => ReloadPriceOverrides(true);
+        ReloadPriceOverrides(true);
         CustomItem.InitCustomItem(this);
         Settings.DebugSettings.ResetInspectedItem.OnPressed += () =>
         {

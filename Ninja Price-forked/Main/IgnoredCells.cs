@@ -340,6 +340,22 @@ public partial class Main
     {
         base.DrawSettings();
         DrawIgnoredCellsSettings();
+        DrawPriceOverrideSettings();
+    }
+
+    private void DrawPriceOverrideSettings()
+    {
+        ImGui.Separator();
+        ImGui.BeginChild("##NinjaPricePriceOverrides", new Vector2(ImGui.GetContentRegionAvail().X, 160f));
+        ImGui.Text("Manual Price Overrides (edit the file, then press Reload Overrides Now)");
+        ImGui.Text($"Status: {_priceOverrideStatus}");
+
+        foreach (var line in PriceOverrideLinesForDisplay())
+        {
+            ImGui.Text($"  {line}");
+        }
+
+        ImGui.EndChild();
     }
 
     private void DrawIgnoredCellsSettings()

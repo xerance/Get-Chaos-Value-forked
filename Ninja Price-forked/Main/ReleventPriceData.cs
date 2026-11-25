@@ -14,6 +14,7 @@ public partial class Main
         public ItemTypes ItemType { get; set; }
         public List<double> ItemBasePrices { get; set; } = new List<double>();
         public string DetailsId { get; set; }
+        public bool IsOverridden { get; set; }
 
         public override string ToString()
         {

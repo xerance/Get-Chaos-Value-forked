@@ -510,7 +510,8 @@ public partial class Main
                     + $"\nClassName: {HoveredItem.ClassName}"
                     + $"\nMapType: {HoveredItem.MapInfo.MapType}"
                     + $"\nMapTier: {HoveredItem.MapInfo.MapTier} (IsMap: {HoveredItem.MapInfo.IsMap}, Occupier: {HoveredItem.MapInfo.Occupier})"
-                    + $"\nDetailsId: {HoveredItem.PriceData.DetailsId}");
+                    + $"\nDetailsId: {HoveredItem.PriceData.DetailsId}"
+                    + (HoveredItem.PriceData.IsOverridden ? "\nPrice: manual override" : ""));
         } 
                 
         if (Settings.LeagueSpecificSettings.ShowArtifactChaosPrices)

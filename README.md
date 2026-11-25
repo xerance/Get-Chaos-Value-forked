@@ -73,3 +73,30 @@ poe.ninja lists generic maps with the tier in the name (`Map (Tier 16)`,
 exact name match found nothing for generic maps and they were priced at 0 (and
 therefore not drawn at all). The lookup now tries `<name> (Tier N)` first and
 falls back to the plain name.
+
+## Fork change: manual price overrides
+
+poe.ninja's aggregation sometimes produces a nonsense chaos value for a heavily listed
+line - the plain `Map (Tier 16)` entry has read 2c, 20.2c and 23.2c within a single day
+while every other map tier sat at 1-3c - and there is no second source to cross-check it
+against. Rather than guess, the fork lets you pin a value yourself.
+
+Edit `price_overrides.txt` in the plugin's config folder
+(`<HUD>/config/Ninja_Price_Forked.Main/`), one override per line:
+
+```
+# key = chaos value
+map-tier-16-t0-gen-24 = 2
+Map (Tier 16) = 2
+```
+
+The key is matched case-insensitively against the item's poe.ninja `DetailsId` first,
+then its unique name, then its base name; hover an item with debug logging on to see all
+three. Blank lines and `#` comments are ignored, and a value is read with either `.` or
+`,` as the decimal separator. Stackable items are valued per item and multiplied by the
+stack size.
+
+The file is created from a template on first launch. Press **Reload Overrides Now** in
+the settings after editing it - the panel lists everything currently loaded - or untick
+**Use Manual Price Overrides** to fall back to poe.ninja everywhere. An overridden item
+shows `Price: manual override` in the hovered-item debug block.

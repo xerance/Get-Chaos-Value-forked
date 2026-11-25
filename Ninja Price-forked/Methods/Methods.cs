@@ -1081,6 +1081,7 @@ public partial class Main
         }
         finally
         {
+            ApplyPriceOverride(item);
             if (item.PriceData.MaxChaosValue == 0)
             {
                 item.PriceData.MaxChaosValue = item.PriceData.MinChaosValue;
