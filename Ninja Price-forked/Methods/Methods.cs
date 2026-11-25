@@ -208,6 +208,9 @@ public partial class Main
                     if (baseItemType != null)
                     {
                         HoveredItem = new CustomItem(inventoryItemIcon);
+                        // HoveredItem is cleared every frame, so keep the last one around for
+                        // the settings panel's "Add Last Hovered Item" button.
+                        LastHoveredItem = HoveredItem;
                         if (Settings.DebugSettings.InspectHoverHotkey.PressedOnce())
                         {
                             _inspectedItem = HoveredItem;

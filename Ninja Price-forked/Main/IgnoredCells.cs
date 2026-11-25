@@ -343,21 +343,6 @@ public partial class Main
         DrawPriceOverrideSettings();
     }
 
-    private void DrawPriceOverrideSettings()
-    {
-        ImGui.Separator();
-        ImGui.BeginChild("##NinjaPricePriceOverrides", new Vector2(ImGui.GetContentRegionAvail().X, 160f));
-        ImGui.Text("Manual Price Overrides (edit the file, then press Reload Overrides Now)");
-        ImGui.Text($"Status: {_priceOverrideStatus}");
-
-        foreach (var line in PriceOverrideLinesForDisplay())
-        {
-            ImGui.Text($"  {line}");
-        }
-
-        ImGui.EndChild();
-    }
-
     private void DrawIgnoredCellsSettings()
     {
         // Plain two-argument BeginChild on purpose: the flag enums moved around between the

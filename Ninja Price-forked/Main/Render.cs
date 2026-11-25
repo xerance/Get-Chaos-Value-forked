@@ -43,6 +43,7 @@ public partial class Main
     public Element HagglePanel { get; set; }
 
     private CustomItem HoveredItem;
+    private CustomItem LastHoveredItem;
     private RectangleF? HoveredItemTooltipRect;
 
     private readonly CachedValue<List<ItemOnGround>> _slowGroundItems;

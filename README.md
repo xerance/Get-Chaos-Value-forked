@@ -96,7 +96,12 @@ three. Blank lines and `#` comments are ignored, and a value is read with either
 `,` as the decimal separator. Stackable items are valued per item and multiplied by the
 stack size.
 
-The file is created from a template on first launch. Press **Reload Overrides Now** in
-the settings after editing it - the panel lists everything currently loaded - or untick
-**Use Manual Price Overrides** to fall back to poe.ninja everywhere. An overridden item
-shows `Price: manual override` in the hovered-item debug block.
+The file is created on first launch, but you do not have to touch it: the settings panel
+has a row editor. **Add Row** appends a blank pair, **Add Last Hovered Item** fills one in
+from the item you hovered most recently (its DetailsId and current price), **Remove** drops
+a row, **Save** writes the file and re-applies it, and **Discard Changes** re-reads from
+disk. Comments above the first entry are preserved when saving; comments below it are not.
+
+**Reload Overrides Now** re-reads the file if you edited it by hand, and unticking **Use
+Manual Price Overrides** falls back to poe.ninja everywhere without deleting anything. An
+overridden item shows `Price: manual override` in the hovered-item debug block.
