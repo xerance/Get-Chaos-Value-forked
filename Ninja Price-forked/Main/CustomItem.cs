@@ -31,6 +31,7 @@ public class CustomItem
     // Diagnostics, visible in the hovered-item inspector
     public string ConstructionError;
     public string MapTypeError;
+    public string ModTranslationError;
     public Influence InfluenceFlags;
     public bool IsCorrupted;
     public int CorruptionImplicitCount;
@@ -203,9 +204,15 @@ public class CustomItem
                     }
                 }
 
-                FoulbornMods = mods.ExplicitMods.Where(x => x.RawName.StartsWith("MutatedUnique", StringComparison.Ordinal)).Select(x => x.Translation).ToHashSet();
+                FoulbornMods = mods.ExplicitMods
+                    .Where(x => x.RawName.StartsWith("MutatedUnique", StringComparison.Ordinal))
+                    .Select(TryTranslateMod)
+                    .Where(x => x != null)
+                    .ToHashSet();
 
-                ImplicitModsData.AddRange(mods.ImplicitMods.Select(x => (x.Translation, x.Values)));
+                ImplicitModsData.AddRange(mods.ImplicitMods
+                    .Select(x => (Translation: TryTranslateMod(x), x.Values))
+                    .Where(x => x.Translation != null));
 
                 if (UniqueName == "Forbidden Flesh" ||
                     UniqueName == "Forbidden Flame")
@@ -337,6 +344,22 @@ public class CustomItem
                 Core.LogError($"Ninja Pricer.CustomItem Error:\n{exception}");
         }
 
+    }
+
+    // ExileCore's stat translation throws on mods whose stat handling it doesn't know
+    // (SwitchExpressionException out of StatTranslationUtils.ConvertStat - the citadel implicit
+    // on Tier 16 maps is one). A single untranslatable mod must not take the whole item down.
+    private string TryTranslateMod(ItemMod mod)
+    {
+        try
+        {
+            return mod?.Translation;
+        }
+        catch (Exception exception)
+        {
+            ModTranslationError ??= $"{mod?.RawName}: {exception.Message}";
+            return null;
+        }
     }
 
     private static readonly Regex BaseNameTierRegex = new(@"\(Tier (\d+)\)", RegexOptions.Compiled);
