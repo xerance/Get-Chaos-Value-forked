@@ -507,7 +507,9 @@ public partial class Main
             AddText($"\nUniqueName: {HoveredItem.UniqueName}"
                     + $"\nBaseName: {HoveredItem.BaseName}"
                     + $"\nItemType: {HoveredItem.ItemType}"
+                    + $"\nClassName: {HoveredItem.ClassName}"
                     + $"\nMapType: {HoveredItem.MapInfo.MapType}"
+                    + $"\nMapTier: {HoveredItem.MapInfo.MapTier} (IsMap: {HoveredItem.MapInfo.IsMap}, Occupier: {HoveredItem.MapInfo.Occupier})"
                     + $"\nDetailsId: {HoveredItem.PriceData.DetailsId}");
         } 
                 

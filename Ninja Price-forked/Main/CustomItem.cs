@@ -8,6 +8,7 @@ using Ninja_Price_Forked.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ExileCore.PoEMemory.Models;
 
 namespace Ninja_Price_Forked.Main;
@@ -254,7 +255,14 @@ public class CustomItem
                 IsWeapon = true;
 
             MapInfo.MapTier = itemEntity.TryGetComponent<MapKey>(out var map) ? map.Tier : 0;
-            MapInfo.IsMap = MapInfo.MapTier > 0;
+            if (MapInfo.MapTier <= 0)
+            {
+                // Generic maps carry their tier in the base name ("Map (Tier 16)") and may not
+                // expose a usable MapKey component, so fall back to the name.
+                MapInfo.MapTier = GetTierFromBaseName(BaseName);
+            }
+
+            MapInfo.IsMap = MapInfo.MapTier > 0 || IsMapClass(ClassName);
 
             if (Rarity != ItemRarity.Unique && MapInfo.IsMap)
             {
@@ -314,6 +322,19 @@ public class CustomItem
         }
 
     }
+
+    private static readonly Regex BaseNameTierRegex = new(@"\(Tier (\d+)\)", RegexOptions.Compiled);
+
+    // "Map (Tier 16)" -> 16, anything else -> 0
+    private static int GetTierFromBaseName(string baseName)
+    {
+        if (string.IsNullOrEmpty(baseName)) return 0;
+        var match = BaseNameTierRegex.Match(baseName);
+        return match.Success && int.TryParse(match.Groups[1].Value, out var tier) ? tier : 0;
+    }
+
+    // The map item class itself - deliberately not "MiscMapItem" or "MapFragment"
+    private static bool IsMapClass(string className) => className is "Map" or "Maps";
 
     private void ComputeType(Entity itemEntity)
     {
